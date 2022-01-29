@@ -91,13 +91,13 @@ GO 使用 UTF-8 标准的字符编码方式
 
 Go Module 的核心是一个名为 go.mod 的文件
 
-    $go mod init github.com/username/hellomodule // 初始化一个module，添加go.mod文件
-    go: creating new go.mod: module github.com/username/hellomodule
+    $go mod init github.com/user/hellomodule // 初始化一个module，添加go.mod文件
+    go: creating new go.mod: module github.com/user/hellomodule
     go: to add module requirements and sums:
       go mod tidy
 
     $cat go.mod
-    module github.com/username/hellomodule // 声明 module 的路径
+    module github.com/user/hellomodule // 声明 module 的路径
 
     go 1.16 // Go 版本指示符，表示这个 module 是在某个特定的 Go 版本的 module 语义的基础上编写的
 
@@ -105,8 +105,8 @@ Go Module 的核心是一个名为 go.mod 的文件
 
 module 隐含了一个命名空间的概念，module 下每个包的导入路径都是由 module path 和包所在子目录的名字结合在一起构成
 
-    github.com/username/hellomodule // module主路径
-    github.com/username/hellomodule/pkg/pkg1 // 子目录 pkg/pkg1 的导入路径
+    github.com/user/hellomodule // module主路径
+    github.com/user/hellomodule/pkg/pkg1 // 子目录 pkg/pkg1 的导入路径
 
 不需要手动添加各个引入的包，用**go mod tidy**命令即可
 
@@ -253,7 +253,7 @@ go mod tidy 会分析当前 main module 的所有源文件，找出了当前 mai
 
 #### 语义导入版本 (Semantic Import Versioning)
 
-    module github.com/username/module-mode
+    module github.com/user/module-mode
 
     go 1.16
 
@@ -305,4 +305,70 @@ v0.y.z 这样的版本号用于项目初始不稳定开发阶段的版本号，G
 | auto        | 默认值：使用GOPATH 模式还是Go Module<br />模式， 取决于要构建的源码目录所在位置，<br />以及是否包含go.mod文件。如果要构建的源<br />码目录不在以GOPATH/src为根的目录体系<br />下，且包含go.mod文件(两个条件缺一不<br />可)，那么使用Go Module模式； 否则使用传<br />统的GOPATH模式 | 默认值：只要当前目录或父目录下有go.mod<br />文件时，就开Go Module模式， 无论源码目<br />录是否在GOPATH外面 | 只有当前目录或父目录下有go.mod文件时,<br />就开启Go Module模式, 无论源码目录是否<br />在GOPATH外面 |
 | off         | GOPATH模式                                                                                                                                                                                                                                                                        | GOPATH模式                                                                                                 | GOPATH模式                                                                                         |
 
-## Go Module的6类常规操作
+## Go Module的常规操作
+
+### 为当前 module 添加一个依赖
+
+在源码中import了新的包后，需用使用go get github.com/user/pgk 或者 go mod tidy 命令获取包，两者的效果是等价的，但是推荐使用go mod tidy命令
+
+### 升级 / 降级依赖的版本
+
+通过语义导入版本机制在命令或者源码里加上版本号
+
+通过go list查看某个包的所有版本：
+
+    $go list -m -versions github.com/sirupsen/logrus
+    github.com/sirupsen/logrus v0.1.0 v0.1.1 v0.2.0 v0.3.0 v0.4.0 v0.4.1 v0.5.0 v0.5.1 v0.6.0 v0.6.1 v0.6.2 v0.6.3 v0.6.4 v0.6.5 v0.6.6 v0.7.0 v0.7.1 v0.7.2 v0.7.3 v0.8.0 v0.8.1 v0.8.2 v0.8.3 v0.8.4 v0.8.5 v0.8.6 v0.8.7 v0.9.0 v0.10.0 v0.11.0 v0.11.1 v0.11.2 v0.11.3 v0.11.4 v0.11.5 v1.0.0 v1.0.1 v1.0.3 v1.0.4 v1.0.5 v1.0.6 v1.1.0 v1.1.1 v1.2.0 v1.3.0 v1.4.0 v1.4.1 v1.4.2 v1.5.0 v1.6.0 v1.7.0 v1.7.1 v1.8.0 v1.8.1
+
+通过go get获取指定的版本号：
+
+    $go get github.com/sirupsen/logrus@v1.7.0
+    go: downloading github.com/sirupsen/logrus v1.7.0
+    go get: downgraded github.com/sirupsen/logrus v1.8.1 => v1.7.0
+
+通过go mod tidy获取指定的版本号：
+
+    $go mod edit -require=github.com/sirupsen/logrus@v1.7.0
+    $go mod tidy       
+    go: downloading github.com/sirupsen/logrus v1.7.0
+
+#### 大版本号的升级
+
+既然大版本号不一样了，就说明是互相不兼容的，就应该采用不同的导入路径
+
+    import github.com/user/repo/v2/xxx
+
+    $go get github.com/user/repo/v2
+
+### 移除一个依赖
+
+通过 go list 命令可以列出当前 module 的所有依赖
+
+    $go list -m all
+    ... ...
+    ... ...
+
+从源代码中移除import的包语句后使用go build命令并不会移除go.mod中的依赖说明语句，需要用 go mod tidy 命令，将这个依赖项彻底从 Go Module 构建上下文中清除掉，go mod tidy 会自动分析源码依赖，而且将不再使用的依赖从 go.mod 和 go.sum 中移除
+
+### 特殊情况：使用 vendor
+
+虽然vendor机制不再受到青睐，然仍是Go Module 构建机制的一个很好的补充
+
+在一些不方便访问外部网络，在一些内部的持续集成或持续交付环境 (CI/CD) 中，使用 vendor 机制可以实现与 Go Module 等价的构建
+
+通过下面命令为该项目建立 vendor：
+
+    $go mod vendor
+    $tree -LF 2 vendor
+    vendor <--项目的依赖包的副本
+    ├── github.com/
+    │   ├── google/
+    │   ├── magefile/
+    │   └── sirupsen/
+    ├── golang.org/
+    │   └── x/
+    └── modules.txt <--记录了 vendor 下的 module 以及版本
+
+基于 vendor 构建的命令：
+
+    $go build -mod=vendor
