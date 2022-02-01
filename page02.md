@@ -68,7 +68,7 @@ Go 团队承诺对最新的两个 Go 稳定大版本提供支持
     
     package main // 定义了一个包，main 包在 Go 中是一个特殊的包，整个 Go 程序中仅允许存在一个名为 main 的包
 
-    import "fmt" // fmt代表的是包的导入路径（Import），它表示的是标准库下的 fmt 目录，整个 import 声明语句的含义是导入标准库 fmt 目录下的包；
+    import "fmt" // fmt代表的是包的导入路径（Import），它表示的是标准库下的 fmt 目录，整个 import 声明语句的含义是导入标准库 fmt 目录下的包
 
     func main() { // 函数体开始
         fmt.Println("hello, world") // 这里的“fmt”代表的则是包名，首字母大写的函数名表示是导出的对包外可见，如果小写则只能在包内可见
