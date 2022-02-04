@@ -165,3 +165,241 @@ append 操作的自动扩容行为，一旦追加的数据操作触碰到切片�
     after reassign 1st elem of slice, array: [11 12 13 24 25]
     after reassign 1st elem of slice, slice(len=5, cap=8): [22 13 24 25 26]
 
+## map 类型
+
+表示一组无序的键值对，集合中每个 key 都是唯一的，由 key 类型与 value 类型组成：
+
+    map[key_type]value_type
+
+key 与 value 的类型可相同或不同：
+
+    map[string]string // key与value元素的类型相同
+    map[int]string    // key与value元素的类型不同
+
+map 类型对 value 的类型没有限制
+
+但是为了保证 key 的唯一性，**key 的类型必须支持“==”和“!=”两种比较操作符**，有着严格的要求
+
+如果两个 map 类型的 key 和 value 元素类型都相同，可以说它们是同一个 map 类型
+
+在 Go 语言中，函数类型、map 类型自身，以及切片只支持与 nil 的比较，而不支持同类型两个变量的比较：
+
+    s1 := make([]int, 1)
+    s2 := make([]int, 2)
+    f1 := func() {}
+    f2 := func() {}
+    m1 := make(map[int]string)
+    m2 := make(map[int]string)
+    println(s1 == s2) // 错误：invalid operation: s1 == s2 (slice can only be compared to nil)
+    println(f1 == f2) // 错误：invalid operation: f1 == f2 (func can only be compared to nil)
+    println(m1 == m2) // 错误：invalid operation: m1 == m2 (map can only be compared to nil)
+
+所以函数类型、map 类型自身，以及切片类型是不能作为 map 的 key 类型的
+
+### 声明
+
+如果没有显式地赋予 map 变量初值，map 类型变量的默认值为 nil
+
+    var m map[string]int // 一个map[string]int类型的变量
+
+和切片变量不同的是，初值为零值 nil 的切片类型变量，可以借助内置的 append 的函数进行操作，在 Go 中称之为**“零值可用”**
+  
+关于零值可用：
+
+* 可以提升开发者的使用体验
+* 不用再担心变量的初始状态是否有效
+
+map 类型因为内部实现的复杂性，无法“零值可用”
+
+对处于零值状态的 map 变量直接进行操作，就会导致运行时异常（panic），导致程序进程异常退出：
+
+    var m map[string]int // m = nil
+    m["key"] = 1         // 发生运行时异常：panic: assignment to entry in nil map
+
+所以必须对 map 类型变量进行显式初始化后才能使用
+
+### 初始化
+
+#### 使用复合字面值初始化 map 类型变量
+
+    m := map[int]string{} // 此时变量 m 中没有任何键值对，但也不等同于初值为 nil 的 map 变量
+    
+    m1 := map[int][]string{
+        1: []string{"val1_1", "val1_2"},
+        3: []string{"val3_1", "val3_2", "val3_3"},
+        7: []string{"val7_1"},
+    }
+
+    type Position struct { // 这里是一个结构体
+        x float64 
+        y float64
+    }
+
+    m2 := map[Position]string{
+        Position{29.935523, 52.568915}: "school",
+        Position{25.352594, 113.304361}: "shopping-mall",
+        Position{73.224455, 111.804306}: "hospital",
+    }
+
+允许省略字面值中的元素类型，编译器会自行推导：
+
+    m2 := map[Position]string{
+        {29.935523, 52.568915}: "school",
+        {25.352594, 113.304361}: "shopping-mall",
+        {73.224455, 111.804306}: "hospital",
+    }
+
+#### 使用 make 进行显式初始化
+
+    m1 := make(map[int]string) // 未指定初始容量
+    m2 := make(map[int]string, 8) // 指定初始容量为8
+
+map 不受限于它的初始容量值，当元素数量超过初始容量后，也会自动进行扩容
+
+#### map 的基本操作
+
+##### 插入新键值对
+
+首先插入的对象必须是非 nil 的 map 类型变量，就可以在其中插入符合 map 类型定义的任意新键值对，直接赋值即可：
+
+    m := make(map[int]string)
+    m[1] = "value1"
+    m[2] = "value2"
+    m[3] = "value3"
+
+除非系统内存耗尽，插入总是成功的，插入的时候如果 key 已经存在，会用新值覆盖旧值：
+
+    m := map[string]int {
+      "key1" : 1,
+      "key2" : 2,
+    }
+
+    m["key1"] = 11 // 11会覆盖掉"key1"对应的旧值1
+    m["key3"] = 3  // 此时m为map[key1:11 key2:2 key3:3]
+
+##### 获取键值对数量
+
+通过 len 函数：
+
+    m := map[string]int {
+      "key1" : 1,
+      "key2" : 2,
+    }
+
+    fmt.Println(len(m)) // 2
+    m["key3"] = 3  
+    fmt.Println(len(m)) // 3
+
+和切片类型不同，不能对 map 类型变量调用 cap 函数
+
+##### 查找和数据读取
+
+尝试获取一个键对应的值的时候，如果这个键在 map 中并不存在，会得到这个 value 元素类型的零值：
+
+    m := make(map[string]int)
+    v := m["key1"] // 如果 key1 不存在，就会被赋予 int 的零值，也就是0
+
+使用“comma ok”惯用法对 map 进行键查找和键值读取操作：
+
+    m := make(map[string]int)
+    v, ok := m["key1"]
+    if !ok {
+        // "key1"不在map中
+    }
+    // "key1"在map中，v将被赋予"key1"键对应的value
+
+    
+    m := make(map[string]int)
+    _, ok := m["key1"] // 用 _ 忽略可能返回的 value
+    ... ...
+
+##### 删除数据
+
+使用内置函数 delete 来从 map 中删除数据：
+
+    m := map[string]int {
+      "key1" : 1,
+      "key2" : 2,
+    }
+
+    fmt.Println(m) // map[key1:1 key2:2]
+    delete(m, "key2") // 删除"key2"
+    fmt.Println(m) // map[key1:1]
+
+delete 函数是从 map 中删除键的唯一方法
+
+即便传给 delete 的键在 map 中并不存在，delete 函数的执行也不会失败，更不会抛出运行时的异常
+
+##### 遍历 map 中的键值数据
+
+唯一遍历 map 的方法 for range 语句：
+
+    m := map[int]int{
+        1: 11,
+        2: 12,
+        3: 13,
+    }
+
+    for k, v := range m { // 每次迭代都会返回一个键值对
+        fmt.Printf("[%d, %d] ", k, v) // 键存在于变量 k 中，对应的值存储在变量 v 中
+    }
+
+只关心每次迭代的键：
+
+    for k, _ := range m { 
+      // 使用k
+    }
+
+    for k := range m {
+      // 使用k
+    }
+
+只关心每次迭代返回的键所对应的 value：
+
+    for _, v := range m {
+      // 使用v
+    }
+
+关于 map 一个很重要的问题就是，**对同一 map 做多次遍历的时候，每次遍历元素的次序都不相同**
+
+这是一个坑，所以 Go **程序逻辑千万不要依赖遍历 map 所得到的的元素次序**
+
+#### map 变量的传递开销
+
+和切片类型一样，map 也是引用类型，实质上传递的也只是一个“描述符”，传递的开销是固定的，而且也很小
+
+而且以描述符传递的类型(map slice 引用 )，在函数或者方法内部中的修改对外部也是可以的
+
+#### map 的内部实现
+
+Go 运行时使用一张哈希表来实现抽象的 map 类型，实现了包括查找、插入、删除等
+
+Go 编译器会将语法层面的 map 操作，**重写成运行时对应的函数调用**：
+
+    // 创建map类型变量实例
+    m := make(map[keyType]valType, capacityhint) → m := runtime.makemap(maptype, capacityhint, m)
+
+    // 插入新键值对或给键重新赋值
+    m["key"] = "value" → v := runtime.mapassign(maptype, m, "key") v是用于后续存储value的空间的地址
+
+    // 获取某键的值 
+    v := m["key"]      → v := runtime.mapaccess1(maptype, m, "key")
+    v, ok := m["key"]  → v, ok := runtime.mapaccess2(maptype, m, "key")
+
+    // 删除某键
+    delete(m, "key")   → runtime.mapdelete(maptype, m, “key”)
+
+#### map 与并发
+
+map 实例不是并发写安全的，也不支持并发读写，如果对 map 实例进行并发读写，程序运行时就会抛出异常
+
+如果仅仅是进行并发读，map 是没有问题的
+
+并发写安全的 sync.Map 类型(Go version >= 1.9)，可以用来在并发读写的场景下替换掉 map
+
+注意，因为 map 可以自动扩容，map 中数据元素的 value 位置可能在这一过程中发生变化
+
+所以 Go 不允许获取 map 中 value 的地址，这个约束在编译期间就生效，如果对 value 取地址就会报编译错误：
+
+    p := &m[key]  // cannot take the address of m[key]
+    fmt.Println(p)
