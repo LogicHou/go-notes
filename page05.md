@@ -403,3 +403,323 @@ map 实例不是并发写安全的，也不支持并发读写，如果对 map �
 
     p := &m[key]  // cannot take the address of m[key]
     fmt.Println(p)
+
+## 结构体
+
+### 定义一个新类型
+
+#### 使用关键字type进行类型定义（Type Definition）
+
+    type T S // 定义一个新类型T
+
+S 可以是任何一个已定义的类型，包括 Go 原生类型，或者是其他已定义的自定义类型：
+
+    type T1 int // 底层类型为int
+    type T2 T1  // 基于T1，T1的底层类型为int，所以T2的底层类型同为int
+
+如果一个新类型是基于某个 Go 原生类型定义的，那么我们就叫 Go 原生类型为新类型的**底层类型**，被用来判断两个类型本质上是否相同
+
+T1 和 T2 是不同类型，但底层类型都是类型 int，所以本质上是相同的
+
+而本质上相同的两个类型，它们的变量可以通过显式转型进行相互赋值
+
+相反，如果本质上是不同的两个类型，它们的变量间连显式转型都不可能，更不能相互赋值
+
+基于类型字面值来定义新类型，多用于自定义一个新的复合类型：
+
+    type M map[int]string
+    type S []string
+
+#### 使用类型别名（Type Alias）
+
+通常用在项目的渐进式重构，还有对已有包的二次封装方面，形式：
+
+    type T = S // type alias
+
+和类型定义相比，类型别名的形式只是多了一个等号，用类型别名定义的新类型 T 与原类型 S 完全等价，也就是并没有定义出新类型，T 与 S 实际上就是**同一种类型**
+
+### 定义一个结构体类型
+
+典型的结构体类型的定义形式：
+
+    type T struct {
+        Field1 T1
+        Field2 T2
+        ... ...
+        FieldN Tn
+    }
+
+
+    type Book struct {
+        Title string              // 书名
+        Pages int                 // 书的页数
+        Indexes map[string]int    // 书的索引
+    }
+
+得到一个名为 T 的结构体类型，定义中 struct 关键字后面的大括号包裹的内容就是一个**类型字面值**
+
+由若干个字段（field）聚合而成，每个字段有自己的名字与类型，并且在一个结构体中，每个字段的名字应该都是唯一的
+
+首字母大写的是导出标识符，可以被其他包所使用
+
+可以用空标识符“_”作为结构体类型定义中的字段名称，不能被外部包引用，也无法被结构体所在的包使用
+
+### 特殊情况
+
+#### 定义一个空结构体
+
+    type Empty struct{} // Empty是一个不包含任何字段的空结构体类型
+    
+    var s Empty
+    println(unsafe.Sizeof(s)) // 0 空结构体类型变量的大小为 0
+
+空结构体类型变量的内存占用为 0，基于这个内存零开销的特性，可以将其作为一种“事件”信息进行 Goroutine 之间的通信：
+
+    var c = make(chan Empty) // 声明一个元素类型为Empty的channel
+    c<-Empty{}               // 向channel写入一个“事件”
+
+这种以空结构体为元素类建立的 channel，是目前能实现的、内存占用最小的 Goroutine 间通信方式
+
+#### 使用其他结构体作为自定义结构体中字段的类型
+
+    type Person struct {
+        Name string
+        Phone string
+        Addr string
+    }
+
+    type Book struct {
+        Title string
+        Author Person
+        ... ...
+    }
+
+访问 Book 结构体字段 Author 中的 Phone 字段：
+
+    var book Book 
+    println(book.Author.Phone)
+
+嵌入字段（Embedded Field）或者叫匿名字段，是一种更为简便的定义方法，可以无需提供字段的名字，只使用其类型就可以：
+
+    type Book struct {
+        Title string
+        Person
+        ... ...
+    }
+
+访问 Person 中的 Phone 字段：
+
+    var book Book 
+    println(book.Person.Phone) // 将类型名当作嵌入字段的名字
+    println(book.Phone)        // 支持直接访问嵌入字段所属类型中字段
+
+Go 语言不支持在结构体类型定义中，递归地放入其自身类型字段的定义方式：
+
+    type T struct {
+        t T  
+        ... ...
+    }
+    
+    type T1 struct {
+      t2 T2
+    }
+
+    type T2 struct {
+      t1 T1
+    }
+    // 编译器就会给出“invalid recursive type T”的错误信息
+
+但可以拥有自身类型的指针类型、以自身类型为元素类型的切片类型，以及以自身类型作为 value 类型的 map 类型的字段：
+
+    type T struct {
+        t  *T           // ok
+        st []T          // ok slice 是描述符类型，不用加 * 号
+        m  map[string]T // ok map   也是描述符类型，不用加 * 号
+    }
+
+### 结构体变量的声明与初始化
+
+    type Book struct {
+        ...
+    }
+
+    var book Book
+    var book = Book{}
+    book := Book{}
+
+结构体类型通常是对真实世界复杂事物的抽象，这和简单的数值、字符串、数组 / 切片等类型有所不同
+
+**结构体类型的变量通常都要被赋予适当的初始值后，才会有合理的意义**
+
+#### 零值初始化
+
+    var book Book // book为零值结构体变量
+
+这样定义的一本书既没有书名，也没有作者、页数、索引等信息，对这本书的抽象就失去了实际价值
+
+对于像 Book 这样的结构体类型，使用零值初始化并不是正确的选择
+
+但是采用零值初始化的零值结构体变量也有其存在的意义
+
+如果一种类型采用零值初始化得到的零值变量，是有意义的，而且是直接可用的，我称这种类型为“零值可用”类型
+
+定义零值可用类型是简化代码、改善开发者使用体验的一种重要的手段
+
+比如标准库 sync 包的 Mutex 类型：
+
+    var mu sync.Mutex
+    mu.Lock()
+    mu.Unlock()
+
+比如标准库 bytes.Buffer 结构体类型：
+
+    var b bytes.Buffer
+    b.Write([]byte("Hello, Go"))
+    fmt.Println(b.String()) // 输出：Hello, Go
+
+#### 使用复合字面值
+
+在日常开发中，对结构体类型变量进行显式初始化的最常用方法就是使用复合字面值
+
+最简单的就是按顺序依次给每个结构体字段进行赋值，比如下面的代码：
+
+    type Book struct {
+        Title string              // 书名
+        Pages int                 // 书的页数
+        Indexes map[string]int    // 书的索引
+    }
+
+    var book = Book{"The Go Programming Language", 700, make(map[string]int)}
+
+但是这存在还多问题：
+
+* 当结构体类型定义中的字段顺序发生变化，或者字段出现增删操作时，我们就需要手动调整该结构体类型变量的显式初始化代码，让赋值顺序与调整后的字段顺序一致
+* 当一个结构体的字段较多时，这种逐一字段赋值的方式实施起来就会比较困难，而且容易出错，开发人员需要来回对照结构体类型中字段的类型与顺序，谨慎编写字面值表达式
+* 一旦结构体中包含非导出字段，那么这种逐一字段赋值的方式就不再被支持了
+
+强烈不推荐使用这样的方式：
+
+    type T struct {
+        F1 int
+        F2 string
+        f3 int
+        F4 int
+        F5 int
+    }
+
+    var t = T{11, "hello", 13} // 错误：implicit assignment of unexported field 'f3' in T literal
+    或
+    var t = T{11, "hello", 13, 14, 15} // 错误：implicit assignment of unexported field 'f3' in T literal
+
+Go 推荐使用“field:value”形式的复合字面值：
+
+    var t = T{
+        F2: "hello",
+        F1: 11,
+        F4: 14,
+    }
+
+采用类型零值初始化：
+
+    t := T{}
+
+使用预定义函数 new 创建结构体变量实例：
+
+    tp := new(T)
+
+#### 使用特定的构造函数
+
+解决一个结构体类型中包含未导出字段，并且这个字段的零值还不可用，或者一个结构体类型中的某些字段，需要一个复杂的初始化逻辑
+
+比如标准库中的 time.Timer 这个结构体就是一个典型的例子：
+
+    // $GOROOT/src/time/sleep.go
+    type runtimeTimer struct {
+        pp       uintptr
+        when     int64                       // 零值不可用
+        period   int64
+        f        func(interface{}, uintptr)  // 零值不可用
+        arg      interface{}                 // 零值不可用
+        seq      uintptr
+        nextwhen int64
+        status   uint32
+    }
+
+    type Timer struct {
+        C <-chan Time
+        r runtimeTimer
+    }
+
+这个 runtimeTimer 结构体中的一些字段不是零值可用的，所以标准库提供了一个 Timer 结构体专用的构造函数 NewTimer：
+
+    // $GOROOT/src/time/sleep.go
+    func NewTimer(d Duration) *Timer {
+        c := make(chan Time, 1)
+        t := &Timer{
+            C: c,
+            r: runtimeTimer{
+                when: when(d),
+                f:    sendTime,
+                arg:  c,
+            },
+        }
+        startTimer(&t.r)
+        return t
+    }
+
+专用构造函数大多都符合这种模式：
+
+    func NewT(field1, field2, ...) *T {
+        ... ...
+    }
+
+参数列表中的参数通常与 T 定义中的导出字段相对应，返回值则是一个 T 指针类型的变量
+
+T 的非导出字段在 NewT 内部进行初始化，一些需要复杂初始化逻辑的字段也会在 NewT 内部完成初始化
+
+这样，只要调用 NewT 函数就可以得到一个可用的 T 指针类型变量了
+
+### 结构体类型的内存布局
+
+是既数组类型之后，第二个将元素（结构体字段）一个接着一个以“平铺”形式，存放在一个连续内存块中
+
+在真实情况下，结构体字段实际上可能并不是紧密相连的，中间可能存在“缝隙”
+
+这些“缝隙”同样是结构体变量占用的内存空间的一部分，是 Go 编译器插入的“填充物（Padding）”
+
+插入“填充物”的目的是为了满足**内存对齐**的要求，所谓内存对齐，指的就是各种内存对象的内存地址不是随意确定的，必须满足特定要求，这些都是出于对处理器存取数据效率的考虑
+
+对于各种基本数据类型来说，它的变量的内存地址值必须是其类型本身大小的整数倍，比如：
+
+* 一个 int64 类型的变量的内存地址，应该能被 int64 类型自身的大小，也就是 8 整除
+* 一个 uint16 类型的变量的内存地址，应该能被 uint16 类型自身的大小，也就是 2 整除
+
+对于结构体而言，它的变量的内存地址，只要是它最长字段长度与系统对齐系数两者之间较小的那个的整数倍就可以了
+
+比如在64位对齐系数为8的系统上：
+
+    type T struct {
+        b byte   // sum = 1 <--这里的数字表示几byte
+
+        i int64  // sum = 1 + 7 + 8 <--这里插入了“缝隙”7
+        u uint16 // sum = 1 + 7 + 8 + 2
+                 // sum = 1 + 7 + 8 + 6 <--这里插入了“缝隙”6，是为了对齐整个结构体
+    }
+
+这样一来，不同的字段排列顺序也会影响到“填充字节”的多少，从而影响到整个结构体大小
+
+所以，你在日常定义结构体时，一定要注意结构体中字段顺序，尽量合理排序，降低结构体对内存空间的占用
+
+可以通过空标识符来进行主动填充，比如 runtime 包中的 mstats 结构体定义：
+
+    // $GOROOT/src/runtime/mstats.go
+    type mstats struct {
+        ... ...
+        // Add an uint32 for even number of size classes to align below fields
+        // to 64 bits for atomic operations on 32 bit platforms.
+        _ [1 - _NumSizeClasses%2]uint32 // 这里做了主动填充
+
+        last_gc_nanotime uint64 // last gc (monotonic time)
+        last_heap_inuse  uint64 // heap_inuse at mark termination of the previous GC
+        ... ...
+    }
