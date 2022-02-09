@@ -39,3 +39,4 @@ Go 学习过程中记录的一些重要知识点
 
 * if 语句
 * for(for range) 循环
+* switch 语句
