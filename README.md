@@ -67,3 +67,13 @@ Go 学习过程中记录的一些重要知识点
 * Go 接口的应用模式或惯例
 
 ## [10 并发](page10.md)
+
+* 概述
+* Go 的并发方案：goroutine
+  * goroutine 的基本用法
+  * goroutine 的退出
+  * goroutine 间的通信
+  * Goroutine 调度器
+
+## [11 并发原语](page11.md)
+
