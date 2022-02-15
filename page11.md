@@ -41,13 +41,32 @@
 
 非常重要的一个概念：**channel 是用于 Goroutine 间通信的**，所以绝大多数对 channel 的读写都被分别放在了不同的 Goroutine 中
 
+从一个已关闭的 channel 接收数据将永远不会被阻塞
+
+对一个 nil channel 执行获取操作，这个操作将阻塞
+
 #### 通过 for range 接收数据
 
 通过使用 for range 循环语句从 channel 中接收数据，for range 会阻塞在对 channel 的接收操作上，直到 channel 中有数据可接收或 channel 被关闭循环，才会继续向下执行
 
-channel 被关闭后，for range 循环也就结束了
+channel 被关闭后，for range 循环也就结束了，如果 channel 里有数据，for range 会接收完里面的数据再结束：
 
-#### 无缓冲 channel
+    var jobs = make(chan int, 10)
+
+    func main() {
+      go func() {
+        for i := 0; i < 8; i++ {
+          jobs <- (i + 1)
+        }
+        close(jobs)
+      }()
+
+      for j := range jobs {
+        fmt.Println(j) // 输出 1 2 3 4 5 6 7 8
+      }
+    }
+
+### 无缓冲 channel
 
 Goroutine 对不带有缓冲区的无缓冲 channel 的接收和发送操作是同步的
 
@@ -73,7 +92,7 @@ Goroutine 对不带有缓冲区的无缓冲 channel 的接收和发送操作是�
 
 **对无缓冲 channel 类型的发送与接收操作，一定要放在两个不同的 Goroutine 中进行，否则会导致 deadlock**
 
-#### 带缓冲 channel
+### 带缓冲 channel
 
 带缓冲 channel 的运行时层实现带有缓冲区，因此，对带缓冲 channel 的发送操作在缓冲区未满、接收操作在缓冲区非空的情况下是**异步**的（发送或接收不需要阻塞等待）
 
@@ -180,3 +199,114 @@ channel 关闭后，所有等待从这个 channel 接收数据的操作都将返
 
 向带缓冲 channel 的一个发送操作表示获取一个信号量，而从 channel 的一个接收操作则表示释放一个信号量
 
+### len(channel) 的应用
+
+len 是 Go 语言的一个内置函数，支持接收数组、切片、map、字符串和 channel 类型的参数，并返回对应类型的“长度”，也就是一个整型值
+
+针对 channel ch 的类型不同，len(ch) 有如下两种语义：
+
+* 当 ch 为无缓冲 channel 时，len(ch) 总是返回 0，这里调用 len(ch) 就没什么意义
+* 当 ch 为带缓冲 channel 时，len(ch) 返回当前 channel ch 中**尚未被读取**的元素个数
+
+可以使用 len 函数来实现带缓冲 channel 的“判满”、“判有”和“判空”逻辑：
+
+    var ch chan T = make(chan T, capacity)
+
+    // 判空
+    if len(ch) == 0 {
+        // 此时channel ch空了?
+    }
+
+    // 判有
+    if len(ch) > 0 {
+        // 此时channel ch中有数据?
+    }
+
+    // 判满
+    if len(ch) == cap(ch) {
+        // 此时channel ch满了?
+    }
+
+channel 原语用于多个 Goroutine 间的通信，一旦多个 Goroutine 共同对 channel 进行收发操作，len(channel) 就会在多个 Goroutine 间形成“竞态”
+
+单纯地依靠 len(channel) 来判断 channel 中元素状态，是不能保证在后续对 channel 的收发时 channel 状态是不变的
+
+因此，常见的方法是将“判空与读取”放在一个“事务”中，将“判满与写入”放在一个“事务”中，而这类“事务”可以通过 select 实现
+
+这种方法适用于大多数场合，但是这种方法有一个“问题”，那就是它改变了 channel 的状态，会让 channel 接收了一个元素或发送一个元素到 channel
+
+如果想要单纯地侦测 channel 的状态，而又不会因 channel 满或空阻塞在 channel 上，目前没有一种方法可以在实现这样的功能的同时，适用于所有场合
+
+但是在特定的场景下，可以用 len(channel) 来实现，比如下面这两种场景：
+
+* 是一个“多发送单接收”的场景，也就是有多个发送者，但有且只有一个接收者。在这样的场景下，可以在接收 goroutine 中使用len(channel)是否大于0来判断是否 channel 中有数据需要接收 if len(c) > 0
+* 是一个“多接收单发送”的场景，也就是有多个接收者，但有且只有一个发送者。在这样的场景下，可以在发送 Goroutine 中使用len(channel)是否小于cap(channel)来判断是否可以执行向 channel 的发送操作 if len(c) < cap(c)
+
+### nil channel
+
+如果一个 channel 类型变量的值为 nil，称为 nil channel，赋初值需要使用 make
+
+nil channel 有一个特性，那就是对 nil channel 的读写都会发生阻塞：
+
+    func main() {
+      var c chan int
+      <-c //阻塞
+    }
+
+    或者：
+
+    func main() {
+      var c chan int
+      c<-1  //阻塞
+    }
+
+### 与 select 结合使用的一些惯用法
+
+#### 利用 default 分支避免阻塞
+
+select 语句的 default 分支的语义，就是在其他非 default 分支因通信未就绪，而无法被选择的时候执行的，这就给 default 分支赋予了一种“避免阻塞”的特性
+
+    // $GOROOT/src/time/sleep.go
+    func sendTime(c interface{}, seq uintptr) {
+        // 无阻塞的向c发送当前时间
+        select {
+        case c.(chan Time) <- Now():
+        default:
+        }
+    }
+
+#### 实现超时机制
+
+带超时机制的 select，是 Go 中常见的一种 select 和 channel 的组合用法
+
+通过超时事件，我们既可以避免长期陷入某种操作的等待中，也可以做一些异常处理工作
+
+30s 超时的 select：
+
+    func worker() {
+      select {
+      case <-c:
+          // ... do some stuff
+      case <-time.After(30 *time.Second):
+          return
+      }
+    }
+
+在应用带有超时机制的 select 时，要特别注意 timer 使用后的释放，尤其在大量创建 timer 的时候
+
+#### 实现心跳机制
+
+结合 time 包的 Ticker，我们可以实现带有心跳机制的 select。这种机制让我们可以在监听 channel 的同时，执行一些**周期性的任务**
+
+    func worker() {
+      heartbeat := time.NewTicker(30 * time.Second) // heartbeat 实例包含一个 channel 类型的字段 C，会按一定时间间隔持续产生事件，就像“心跳”一样
+      defer heartbeat.Stop()
+      for {
+        select {
+        case <-c:
+          // ... do some stuff
+        case <- heartbeat.C:  // channel c 无数据接收时，会每隔特定时间完成一次迭代，然后回到 for 循环进行下一次迭代
+          //... do heartbeat stuff
+        }
+      }
+    }
