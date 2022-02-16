@@ -41,7 +41,7 @@
 
 非常重要的一个概念：**channel 是用于 Goroutine 间通信的**，所以绝大多数对 channel 的读写都被分别放在了不同的 Goroutine 中
 
-从一个已关闭的 channel 接收数据将永远不会被阻塞
+**从一个已关闭的 channel 接收数据将永远不会被阻塞**
 
 对一个 nil channel 执行获取操作，这个操作将阻塞
 
@@ -70,7 +70,7 @@ channel 被关闭后，for range 循环也就结束了，如果 channel 里有�
 
 Goroutine 对不带有缓冲区的无缓冲 channel 的接收和发送操作是同步的
 
-也就是说，对同一个无缓冲 channel，只有对它进行接收操作的 Goroutine 和对它进行发送操作的 Goroutine 都存在的情况下，通信才能得以进行，否则单方面的操作会让对应的 Goroutine 陷入挂起状态：
+对同一个无缓冲 channel，只有对它进行接收操作的 Goroutine 和对它进行发送操作的 Goroutine 都存在的情况下，通信才能得以进行，否则单方面的操作会让对应的 Goroutine 陷入挂起状态：
 
     func main() {
         ch1 := make(chan int)
@@ -103,6 +103,8 @@ Goroutine 对不带有缓冲区的无缓冲 channel 的接收和发送操作是�
 * 当缓冲区满了的情况下，对它进行发送操作的 Goroutine 就会阻塞挂起
 * 当缓冲区为空的情况下，对它进行接收操作的 Goroutine 也会阻塞挂起
 
+简单的概括就是，满了发送会阻塞，空了接收会阻塞
+
 示例：
 
     ch2 := make(chan int, 1)
@@ -114,13 +116,13 @@ Goroutine 对不带有缓冲区的无缓冲 channel 的接收和发送操作是�
 
 ### 关闭 channel
 
-channel 关闭后，所有等待从这个 channel 接收数据的操作都将返回
+channel 关闭后，所有等待从这个 channel 接收数据的操作都将返回，也就是解除阻塞可以继续向下执行代码
 
-采用不同接收语法形式的语句，在 channel 被关闭后的返回值的情况：
+采用不同接收语法形式的语句，在 channel 被关闭后返回值的情况：
 
     n := <- ch      // 当ch被关闭后，n将被赋值为ch元素类型的零值
     m, ok := <-ch   // 当ch被关闭后，m将被赋值为ch元素类型的零值, ok值为false
-    for v := range ch { // 当ch被关闭后，for range循环结束
+    for v := range ch { // 当ch被关闭后，for range循环结束，有数据会接收完数据
         ... ...
     }
 
@@ -137,6 +139,8 @@ channel 关闭后，所有等待从这个 channel 接收数据的操作都将返
     ch := make(chan int, 5)
     close(ch)
     ch <- 13 // panic: send on closed channel
+
+再次提及，从一个已关闭的 channel 接收数据将永远不会被阻塞
 
 ### select
 
@@ -155,17 +159,70 @@ channel 关闭后，所有等待从这个 channel 接收数据的操作都将返
     default:             // 当上面case中的channel通信均无法实施时，执行该默认分支
     }
 
-当 select 语句中没有 default 分支，而且所有 case 中的 channel 操作都阻塞了的时候，整个 select 语句都将被阻塞，直到某一个 case 上的 channel 变成可发送，或者某个 case 上的 channel 变成可接收，select 语句才可以继续进行下去
+当 select 语句中没有 default 分支，而且所有 case 中的 channel 操作都阻塞了的时候，整个 select 语句都将被阻塞
+
+直到某一个 case 上的 channel 变成可发送，或者某个 case 上的 channel 变成可接收，select 语句才可以继续进行下去
 
 ### 无缓冲 channel 的惯用法
+
+无缓冲 channel 兼具通信和同步特性，在并发程序中应用颇为广泛
 
 #### 第一种用法：用作信号传递
 
 无缓冲 channel 用作信号传递的时候，有两种情况，分别是 1 对 1 通知信号和 1 对 n 通知信号
 
-1 对 1 的情况下，可以通过在一个通道内返回一个专门用作通知 main goroutine 的信号来结束阻塞动作
+1 对 1 的情况下，可以通过在一个通道内返回一个专门用作通知 main goroutine 的信号来结束阻塞动作，示例：
 
-1 对 n 的情况下，这样的信号通知机制，常被用于协调多个 Goroutine 一起工作，通过在多个 goroutine 中植入信号接收操作阻塞住各个 goroutine 的执行，然后通过在 main goroutine 中 close 通道解除阻塞是 goroutine 中的逻辑继续执行
+    type signal struct{}
+
+    func main() {
+        c := make(chan signal)
+        println("start a worker...")
+        go func() {
+            println("worker start to work...")
+            func() {
+                time.Sleep(3 * time.Second)
+            }()
+            c <- signal{}
+        }()
+        <-c // 这里阻塞住了 main goroutine 直到接收到信号才继续向下执行
+        fmt.Println("worker work done!")
+    }
+
+1 对 n 的情况下，这样的信号通知机制，常被用于协调多个 Goroutine 一起工作
+
+比如在多个 goroutine 中植入信号接收操作阻塞住各个 goroutine 的执行，然后通过在 main goroutine 中 close 通道解除阻塞是 goroutine 中的逻辑继续执行：
+
+    type signal struct{}
+
+    func main() {
+        fmt.Println("start a group of workers...")
+        groupSignal := make(chan signal)
+        c := make(chan struct{}) // 负责通知 main goroutine 退出的无缓冲 channel
+        var wg sync.WaitGroup
+
+        for i := 0; i < 2; i++ {
+            wg.Add(1)
+            go func(i int) {
+              <-groupSignal
+              fmt.Printf("worker %d: start to work...\n", i)
+              time.Sleep(2 * time.Second) // do something
+              fmt.Printf("worker %d: works done\n", i)
+              wg.Done()
+            }(i + 1)
+        }
+
+        go func() {
+            wg.Wait()
+            c <- signal(struct{}{})
+        }()
+
+        time.Sleep(5 * time.Second)
+        fmt.Println("the group of workers start to work...")
+        close(groupSignal)
+        <-c
+        fmt.Println("the group of workers work done!")
+    }
 
 #### 第二种用法：用于替代锁机制
 
