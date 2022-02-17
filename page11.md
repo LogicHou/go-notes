@@ -74,7 +74,7 @@ Goroutine 对不带有缓冲区的无缓冲 channel 的接收和发送操作是�
 
     func main() {
         ch1 := make(chan int)
-        ch1 <- 13 // fatal error: all goroutines are asleep - deadlock!
+        ch1 <- 13 // fatal error: all Goroutines are asleep - deadlock!
         n := <-ch1
         println(n)
     }
@@ -84,9 +84,9 @@ Goroutine 对不带有缓冲区的无缓冲 channel 的接收和发送操作是�
     func main() {
         ch1 := make(chan int)
         go func() {
-            ch1 <- 13 // 将发送操作放入一个新goroutine中执行
+            ch1 <- 13 // 将发送操作放入一个新Goroutine中执行
         }()
-        n := <-ch1 // 这里阻塞住，等待从上面的 goroutine 中接收数据
+        n := <-ch1 // 这里阻塞住，等待从上面的 Goroutine 中接收数据
         println(n)
     }
 
@@ -108,11 +108,11 @@ Goroutine 对不带有缓冲区的无缓冲 channel 的接收和发送操作是�
 示例：
 
     ch2 := make(chan int, 1)
-    n := <-ch2 // 由于此时ch2的缓冲区中无数据，因此对其进行接收操作将导致goroutine挂起
+    n := <-ch2 // 由于此时ch2的缓冲区中无数据，因此对其进行接收操作将导致Goroutine挂起
 
     ch3 := make(chan int, 1)
     ch3 <- 17  // 向ch3发送一个整型数17
-    ch3 <- 27  // 由于此时ch3中缓冲区已满，再向ch3发送数据也将导致goroutine挂起
+    ch3 <- 27  // 由于此时ch3中缓冲区已满，再向ch3发送数据也将导致Goroutine挂起
 
 ### 关闭 channel
 
@@ -171,7 +171,7 @@ channel 关闭后，所有等待从这个 channel 接收数据的操作都将返
 
 无缓冲 channel 用作信号传递的时候，有两种情况，分别是 1 对 1 通知信号和 1 对 n 通知信号
 
-1 对 1 的情况下，可以通过在一个通道内返回一个专门用作通知 main goroutine 的信号来结束阻塞动作，示例：
+1 对 1 的情况下，可以通过在一个通道内返回一个专门用作通知 main Goroutine 的信号来结束阻塞动作，示例：
 
     type signal struct{}
 
@@ -185,20 +185,20 @@ channel 关闭后，所有等待从这个 channel 接收数据的操作都将返
             }()
             c <- signal{}
         }()
-        <-c // 这里阻塞住了 main goroutine 直到接收到信号才继续向下执行
+        <-c // 这里阻塞住了 main Goroutine 直到接收到信号才继续向下执行
         fmt.Println("worker work done!")
     }
 
 1 对 n 的情况下，这样的信号通知机制，常被用于协调多个 Goroutine 一起工作
 
-比如在多个 goroutine 中植入信号接收操作阻塞住各个 goroutine 的执行，然后通过在 main goroutine 中 close 通道解除阻塞是 goroutine 中的逻辑继续执行：
+比如在多个 Goroutine 中植入信号接收操作阻塞住各个 Goroutine 的执行，然后通过在 main Goroutine 中 close 通道解除阻塞是 Goroutine 中的逻辑继续执行：
 
     type signal struct{}
 
     func main() {
         fmt.Println("start a group of workers...")
         groupSignal := make(chan signal)
-        c := make(chan struct{}) // 负责通知 main goroutine 退出的无缓冲 channel
+        c := make(chan struct{}) // 负责通知 main Goroutine 退出的无缓冲 channel
         var wg sync.WaitGroup
 
         for i := 0; i < 2; i++ {
@@ -232,11 +232,38 @@ channel 关闭后，所有等待从这个 channel 接收数据的操作都将返
 
 这样其他 Goroutine 通过增加计数器值的动作，实质上就转化为了一次无缓冲 channel 的接收动作
 
+    type counter struct {
+      c chan int
+      i int
+    }
+
+    func main() {
+      cter := &counter{
+        c: make(chan int),
+      }
+      go func() {
+        for {
+          cter.i++
+          cter.c <- cter.i // 如果不接收就会阻塞住，这里用的时无缓冲 channel ，不能同时操作，实现了锁机制
+        }
+      }()
+      var wg sync.WaitGroup
+      for i := 0; i < 10; i++ {
+        wg.Add(1)
+        go func(i int) {
+          v := <-cter.c // 通过接收才能进行下一次累加操作
+          fmt.Printf("Goroutine-%d: current counter value is %d\n", i, v)
+          wg.Done()
+        }(i)
+      }
+      wg.Wait()
+    }
+
 这种并发设计逻辑更符合 Go 语言所倡导的“**不要通过共享内存来通信，而是通过通信来共享内存**”的原则
 
 ### 带缓冲 channel 的惯用法
 
-带缓冲的 channel 与无缓冲的 channel 的最大不同之处，就在于它的异步性
+带缓冲的 channel 与无缓冲的 channel 的最大不同之处，就在于它的**异步性**
 
 对于一个带缓冲 channel，在缓冲区未满的情况下，对它进行发送操作的 Goroutine 不会阻塞挂起
 
@@ -246,7 +273,7 @@ channel 关闭后，所有等待从这个 channel 接收数据的操作都将返
 
 和无缓冲 channel 更多用于信号 / 事件管道相比，可自行设置容量、异步收发的带缓冲 channel 更适合被用作为消息队列，并且，带缓冲 channel 在数据收发的性能上要明显好于无缓冲 channel
 
-不过你 Go 支持 channel 的初衷是作为 Goroutine 间的通信手段，并不是专门用于消息队列场景的
+不过 Go 支持 channel 的初衷是作为 Goroutine 间的通信手段，并不是专门用于消息队列场景的
 
 如果项目需要专业消息队列的功能特性，比如支持优先级、支持权重、支持离线持久化等，那么 channel 就不合适了，可以使用第三方的专业的消息队列实现
 
@@ -265,7 +292,7 @@ len 是 Go 语言的一个内置函数，支持接收数组、切片、map、字
 * 当 ch 为无缓冲 channel 时，len(ch) 总是返回 0，这里调用 len(ch) 就没什么意义
 * 当 ch 为带缓冲 channel 时，len(ch) 返回当前 channel ch 中**尚未被读取**的元素个数
 
-可以使用 len 函数来实现带缓冲 channel 的“判满”、“判有”和“判空”逻辑：
+对带缓冲的 channel 不能直接使用 len 函数来实现“判满”、“判有”和“判空”逻辑：
 
     var ch chan T = make(chan T, capacity)
 
@@ -286,18 +313,51 @@ len 是 Go 语言的一个内置函数，支持接收数组、切片、map、字
 
 channel 原语用于多个 Goroutine 间的通信，一旦多个 Goroutine 共同对 channel 进行收发操作，len(channel) 就会在多个 Goroutine 间形成“竞态”
 
-单纯地依靠 len(channel) 来判断 channel 中元素状态，是不能保证在后续对 channel 的收发时 channel 状态是不变的
+所以单纯地依靠 len(channel) 来判断 channel 中元素状态，是不能保证在后续对 channel 的收发时 channel 状态是不变的
 
-因此，常见的方法是将“判空与读取”放在一个“事务”中，将“判满与写入”放在一个“事务”中，而这类“事务”可以通过 select 实现
+因此，常见的方法是将 “判空与读取” 放在一个 “事务” 中，将 “判满与写入” 放在一个 “事务” 中，而这类 “事务” 可以通过 select 实现：
 
-这种方法适用于大多数场合，但是这种方法有一个“问题”，那就是它改变了 channel 的状态，会让 channel 接收了一个元素或发送一个元素到 channel
+    func tryRecv(c <-chan int) (int, bool) {
+        select {
+        case i := <-c:
+            return i, true
+        default:
+            return 0, false
+        }
+    }
+
+    func trySend(c chan<- int, i int) bool {
+        select {
+        case c <- i:
+            return true
+        default:
+            return false
+        }
+    }
+
+这种方法适用于大多数场合，但是这种方法有一个 “问题”，那就是它改变了 channel 的状态，会让 channel 接收了一个元素或发送一个元素到 channel
 
 如果想要单纯地侦测 channel 的状态，而又不会因 channel 满或空阻塞在 channel 上，目前没有一种方法可以在实现这样的功能的同时，适用于所有场合
 
 但是在特定的场景下，可以用 len(channel) 来实现，比如下面这两种场景：
 
-* 是一个“多发送单接收”的场景，也就是有多个发送者，但有且只有一个接收者。在这样的场景下，可以在接收 goroutine 中使用len(channel)是否大于0来判断是否 channel 中有数据需要接收 if len(c) > 0
-* 是一个“多接收单发送”的场景，也就是有多个接收者，但有且只有一个发送者。在这样的场景下，可以在发送 Goroutine 中使用len(channel)是否小于cap(channel)来判断是否可以执行向 channel 的发送操作 if len(c) < cap(c)
+是一个 “多发送单接收” 的场景，也就是有多个发送者，但有且只有一个接收者，这时可以在接收 Goroutine 中使用 len(channel) 是否大于 0 来判断是否 channel 中有数据需要接收
+
+    for {
+      if len(c) > 0 {
+        i := <-c // 处理i
+      }
+      ......
+    }
+
+是一个 “多接收单发送” 的场景，也就是有多个接收者，但有且只有一个发送者，这时可以在发送 Goroutine 中使用 len(channel) 是否小于 cap(channel) 来判断是否可以执行向 channel 的发送操作
+
+    for {
+      if len(c) < cap(c) {
+        c <- i
+      }
+      ......
+    }
 
 ### nil channel
 
@@ -349,11 +409,13 @@ select 语句的 default 分支的语义，就是在其他非 default 分支因�
       }
     }
 
-在应用带有超时机制的 select 时，要特别注意 timer 使用后的释放，尤其在大量创建 timer 的时候
+在应用带有超时机制的 select 时，要特别注意 **timer 使用后的释放**，尤其在大量创建 timer 的时候
+
+作为 time.Timer 的使用者，要尽量减少在使用 Timer 时给 Go 运行时和 Go 垃圾回收带来的压力，要及时调用 timer 的 Stop 方法回收 Timer 资源
 
 #### 实现心跳机制
 
-结合 time 包的 Ticker，我们可以实现带有心跳机制的 select。这种机制让我们可以在监听 channel 的同时，执行一些**周期性的任务**
+结合 time 包的 Ticker，我们可以实现带有心跳机制的 select。这种机制让我们可以在监听 channel 的同时，执行一些**周期性的任务**：
 
     func worker() {
       heartbeat := time.NewTicker(30 * time.Second) // heartbeat 实例包含一个 channel 类型的字段 C，会按一定时间间隔持续产生事件，就像“心跳”一样
@@ -367,3 +429,5 @@ select 语句的 default 分支的语义，就是在其他非 default 分支因�
         }
       }
     }
+
+和 timer 一样，在使用完 ticker 之后，也不要忘记调用它的 Stop 方法，避免心跳事件在 ticker 的 channel（上面示例中的 heartbeat.C）中持续产生
