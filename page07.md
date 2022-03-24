@@ -4,7 +4,7 @@
 
 普通 Go 函数的构成：
 
-    func funcName(param1 Type1, param2 Type2, ...) (return1 Type3, ...) {
+	func funcName(param1 Type1, param2 Type2, ...) (return1 Type3, ...) {
         // body 函数体
     }
 

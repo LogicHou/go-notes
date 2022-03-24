@@ -12,8 +12,6 @@
 
     var ch chan int
 
-如果 channel 类型变量在声明时没有被赋予初值，那么默认值为 nil
-
 为 channel 类型变量赋初值的唯一方法就是使用 make 这个 Go 预定义的函数：
 
     ch1 := make(chan int)    // 无缓冲 channel
