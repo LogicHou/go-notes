@@ -1,5 +1,36 @@
 # 03 变量与作用域
 
+## 命名
+
+Go语言中的函数名、变量名、常量名、类型名、语句标号和包名等所有的命名，都遵循一个简单的命名规则：
+
+* 一个名字必须以一个字母（Unicode字母）或下划线开头
+* 后面可以跟任意数量的字母、数字或下划线
+* 大写字母和小写字母是不同的：user 和 User 是两个不同的名字
+
+Go语言中类似 if 和 switch 的关键字有25个；关键字不能用于自定义名字，只能在特定语法结构中使用
+
+    break      default       func     interface   select
+    case       defer         go       map         struct
+    chan       else          goto     package     switch
+    const      fallthrough   if       range       type
+    continue   for           import   return      var
+
+此外，还有大约 30 多个预定义的名字，比如 int 和 true 等，主要对应内建的常量、类型和函数
+
+    内建常量: true false iota nil
+
+    内建类型: int int8 int16 int32 int64
+              uint uint8 uint16 uint32 uint64 uintptr
+              float32 float64 complex128 complex64
+              bool byte rune string error
+
+    内建函数: make len cap new append copy close delete
+              complex real imag
+              panic recover
+
+这些内部预先定义的名字并不是关键字，你可以在定义中重新使用它们。在一些特殊的场景中重新定义它们也是有意义的，但是也要注意避免过度而引起语义混乱
+
 ## 变量声明
 
 与特定位置的有明确边界的内存区域绑定在一起的特定的名字，被称为**变量**
