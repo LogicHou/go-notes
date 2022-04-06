@@ -227,15 +227,15 @@ Go 提供两种复数类型：
 
 ## 字符串类型 string
 
-Go 原生支持字符串
+Go 原生支持字符串，无论是字符串常量、字符串变量或是代码中出现的字符串字面值，它们的类型都被统一设置为 string
 
 ### string 类型的数据是不可变的，提高了字符串的并发安全性和存储利用率
 
     var s string = "hello"
     s[0] = 'k'   // 错误：字符串的内容是不可改变的
-    s = "gopher" // ok
+    s = "gopher" // ok 不能改变但是可以进行二次赋值
 
-### 没有结尾’\0’，而且获取长度的时间复杂度是常数时间，消除了获取字符串长度的开销
+### 没有结尾’\0’，获取长度的时间复杂度是常数时间O(1)，消除了获取字符串长度的开销
 
 Go 获取字符串长度是一个常数级时间复杂度，无论字符串中字符个数有多少，都可以快速得到字符串的长度值
 
@@ -254,11 +254,11 @@ Go 获取字符串长度是一个常数级时间复杂度，无论字符串中�
 
 ### Go 字符串的组成
 
-字节视角
+**字节视角**
 
 Go 语言中的字符串值也是一个可空的字节序列，字节序列中的字节个数称为该字符串的长度
 
-一个个的字节只是孤立数据，不表意
+一个个的字节只是孤立数据，不表意：
 
     var s = "中国人"
     fmt.Printf("the length of s = %d\n", len(s)) // 9<--这里是字节数
@@ -268,9 +268,9 @@ Go 语言中的字符串值也是一个可空的字节序列，字节序列中�
     }
     fmt.Printf("\n")
 
-字符串视角
+**字符串视角**
 
-字符串是由一个可空的字符序列构成，表意
+字符串是由一个可空的字符序列构成，表意：
 
     var s = "中国人"
     fmt.Println("the character count in s is", utf8.RuneCountInString(s)) // 3<--这里是字符数
@@ -292,14 +292,12 @@ Unicode 字符集中的每个字符，都被分配了统一且唯一的字符编
 
 Go 使用 rune 这个类型来表示一个 Unicode 码点
 
-本质上是 int32 类型的别名类型，与 int32 类型完全等价
+rune 本质上是 int32 类型的别名类型，与 int32 类型完全等价
 
     // $GOROOT/src/builtin.go
     type rune = int32
 
-一个 rune 实例就是一个 Unicode 字符
-
-一个 Go 字符串也可以被视为 rune 实例的集合
+一个 rune 实例就是一个 Unicode 字符，一个 Go 字符串也可以被视为 rune 实例的集合
 
 可以通过字符字面值来初始化一个 rune 变量
 
@@ -310,7 +308,7 @@ Go 使用 rune 这个类型来表示一个 Unicode 码点
     '\n' // 换行字符
     '\'' // 单引号字符
 
-使用 Unicode 专用的转义字符\u 或\U 作为前缀：
+使用 Unicode 专用的转义字符\u 或\U 作为前缀，来表示一个 Unicode 字符：
 
     '\u4e2d'     // 字符：中  接两个十六进制数，两个不够则用大U表示
     '\U00004e2d' // 字符：中  可以接四个十六进制数
@@ -358,7 +356,7 @@ UTF-8 编码使用的字节数量从 1 个到 4 个不等：
         fmt.Printf("the unicode charactor is %c\n", r) // 中                                     
         buf := make([]byte, 3)                                                                   
         _ = utf8.EncodeRune(buf, r) // 对rune进行utf-8编码                                                           
-        fmt.Printf("utf-8 representation is 0x%X\n", buf) // 0xE4B8AD                            
+        fmt.Printf("utf-8 representation is 0x%X\n", buf) // 0xE4B8AD            
     }                                                                                            
                                                                                                 
     // []byte -> rune                                                                            
@@ -370,6 +368,8 @@ UTF-8 编码使用的字节数量从 1 个到 4 个不等：
 
 ### Go 字符串类型的内部表示⭐⭐⭐⭐⭐
 
+从标准库 reflect 包中相关代码可以看到字符串的内部表示细节：
+
     // $GOROOT/src/reflect/value.go
 
     // StringHeader是一个string的运行时表示
@@ -378,11 +378,13 @@ UTF-8 编码使用的字节数量从 1 个到 4 个不等：
         Len  int <--字符串长度
     }
 
-string 类型其实是一个“描述符”，仅由一个指向底层存储的指针和字符串的长度字段组成，本身并不真正存储字符串数据
+因为字符串类型中包含了字符串长度信息，所以获取长度的时间复杂度是常数时间，用 len 函数获取字符串长度时，len 函数只要简单地将这个信息提取出来就可以了
 
-将 string 类型通过函数 / 方法参数传入也不会带来太多的开销，因为传入的仅仅是一个“描述符”
+**string 类型其实是一个“描述符”，仅由一个指向底层存储的指针和字符串的长度字段组成，本身并不真正存储字符串数据**
 
-打印底层数组的内容：
+直接将 string 类型通过函数 / 方法参数传入也不会带来太多的开销，因为传入的仅仅是一个“描述符”
+
+打印字符串底层数组的内容：
 
     func dumpBytesArray(arr []byte) {
         fmt.Printf("[")
@@ -404,29 +406,32 @@ string 类型其实是一个“描述符”，仅由一个指向底层存储的�
 
 #### 下标操作
 
-本质上等价于底层数组的下标操作
+在字符串的实现中，真正存储数据的是底层的数组，所以字符串的下标操作本质上等价于对底层数组的下标操作：
 
     var s = "中国人"
     fmt.Printf("0x%x\n", s[0]) // 0xe4：字符“中” utf-8编码的第一个字节
-    // 注意通过下标操作，我们获取的是字符串中特定下标上的字节，而不是字符。
+    // 注意通过下标操作，我们获取的是字符串中特定下标上的字节，而不是字符
 
 #### 字符迭代
 
-通过 for 迭代，是一种字节视角的迭代，等价于对字符串底层数组的迭代
+通过常规 for 迭代，是一种字节视角的迭代，等价于对字符串底层数组的迭代：
 
     var s = "中国人"
 
     for i := 0; i < len(s); i++ {
+      // 每轮迭代得到的的结果都是组成字符串内容的一个字节，以及该字节所在的下标值
       fmt.Printf("index: %d, value: 0x%x\n", i, s[i])
     }
 
-通过 for range 迭代，得到的是字符串中 Unicode 字符的码点值，以及该字符在字符串中的偏移值
+通过 for range 迭代，每轮迭代得到的是字符串中 Unicode 字符的码点值，以及该字符在字符串中的偏移值：
 
     var s = "中国人"
 
     for i, v := range s {
         fmt.Printf("index: %d, value: 0x%x\n", i, v)
     }
+
+**可以看到通过这两种形式的迭代对字符串进行操作得到的结果是不同的**
 
 #### 获取字符串长度
 
@@ -436,9 +441,9 @@ len() 获取的是字符串的字节长度
 
 #### 字符串连接
 
-原生支持通过 +/+= 操作符进行字符串连接
+虽然字符串内容是不可变的，但是可以基于已有字符串创建新字符串
 
-虽然通过 +/+= 进行字符串连接的开发体验是最好的，但连接性能就未必是最快的
+Go 原生支持通过 +/+= 操作符进行字符串连接：
 
     s := "Rob Pike, "
     s = s + "Robert Griesemer, "
@@ -446,7 +451,21 @@ len() 获取的是字符串的字节长度
 
     fmt.Println(s) // Rob Pike, Robert Griesemer, Ken Thompson
 
+虽然通过 +/+= 进行字符串连接的开发体验是最好的，但连接性能就未必是最快的
+
 其他字符串连接操作函数：strings.Builder、strings.Join、fmt.Sprintf 
+
+如果能知道拼接字符串的个数，那么使用 bytes.Buffer 和 strings.Builder 的 Grows 申请空间后，性能是最好的；如果不能确定长度，那么 bytes.Buffer 和 strings.Builder 也比 “+” 和 fmt.Sprintf 性能好很多
+
+其中 bytes.Buffer 与 strings.Builder 相比，strings.Builder 更合适，因为 bytes.Buffer 转化为字符串时重新申请了一块空间，存放生成的字符串变量，而 strings.Builder 直接将底层的 []byte 转换成了字符串类型然后返回
+
+bytes.Buffer 的注释中还特意提到了：
+
+    To build strings more efficiently, see the strings.Builder type.
+
+综合易用性和性能，一般推荐使用 strings.Builder 来拼接字符串：
+
+    A Builder is used to efficiently build a string using Write methods. It minimizes memory copying.
 
 #### 字符串比较
 
@@ -482,11 +501,17 @@ Go 采用字典序的比较策略，分别从每个字符串的起始处，开�
             fmt.Println(s1 >= s2) // true
     }
 
+鉴于 Go string 类型是不可变的，所以说如果两个字符串的长度不相同，就直接可以断定两个字符串是不同的
+
+如果两个字符串长度相同，就要进一步判断，数据指针是否指向同一块底层存储数据
+
+如果还相同，那么我们可以说两个字符串是等价的，如果不同，那就还需要进一步去比对实际的数据内容
+
+**简而言之就是先比长度，然后指针，然后比较实际数据内容**
+
 #### 字符串转换
 
-支持字符串与字节切片、字符串与 rune 切片的双向转换，使用显式类型转换就可以无需调用任何函数
-
-string 转切片，或者切片转 string，都有一定的性能开销，因为string 是不可变的，运行时要为转换后的类型分配新内存
+Go 支持字符串与字节切片、字符串与 rune 切片的双向转换，使用显式类型转换就可以无需调用任何函数：
 
     var s string = "中国人"
                           
@@ -505,6 +530,8 @@ string 转切片，或者切片转 string，都有一定的性能开销，因为
     // []byte -> string
     s2 := string(bs)
     fmt.Println(s2) // 中国人
+
+string 转切片，或者切片转 string，都有一定的性能开销，因为string 是不可变的，运行时要为转换后的类型分配新内存
 
 # 常量
 
