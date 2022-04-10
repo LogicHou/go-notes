@@ -284,18 +284,37 @@ map 类型因为内部实现的复杂性，无法“零值可用”
 
 map 类似的容量不受限于它的初始容量值，当元素数量超过初始容量后，也会自动进行扩容
 
+### 遍历 slice 元素
+
+使用 for range 语句进行遍历：
+
+    sl := []int{1, 2, 3, 4, 5, 6}
+    for k, v := range sl {
+      println(k, v)
+    }
+
+    输出
+    0 1
+    1 2
+    2 3
+    3 4
+    4 5
+    5 6
+
 ### map 的基本操作
 
-插入新键值对
+#### 插入新键值对
 
-首先插入的对象必须是非 nil 的 map 类型变量，才可以在其中插入符合 map 类型定义的任意新键值对，直接赋值即可：
+首先插入的对象必须是非 nil 的 map 类型变量，才可以在其中插入符合 map 类型定义的任意新键值对
+
+插入操作很简单，只需把 value 直接赋值给对应的 key 即可：
 
     m := make(map[int]string)
     m[1] = "value1"
     m[2] = "value2"
     m[3] = "value3"
 
-除非系统内存耗尽，插入总是成功的，插入的时候如果 key 已经存在，会用新值覆盖旧值：
+除非系统内存耗尽，否则插入总是成功的，插入的时候如果 key 已经存在，会用新值覆盖旧值：
 
     m := map[string]int {
       "key1" : 1,
@@ -318,16 +337,20 @@ map 类似的容量不受限于它的初始容量值，当元素数量超过初�
     m["key3"] = 3  
     fmt.Println(len(m)) // 3
 
-和切片类型不同，不能对 map 类型变量调用 cap 函数
+和切片类型不同，不能对 map 类型变量调用 cap 函数来获取当前容量
 
 #### 查找和数据读取
 
-尝试获取一个键对应的值的时候，如果这个键在 map 中并不存在，会得到这个 value 元素类型的零值：
+尝试获取一个键对应的值的时候，如果这个 key 在 map 中并不存在，会得到这个 value 元素类型的**零值**：
 
     m := make(map[string]int)
-    v := m["key1"] // 如果 key1 不存在，就会被赋予 int 的零值，也就是0
+    v := m["key1"] 
 
-使用“comma ok”惯用法对 map 进行键查找和键值读取操作：
+如果 key1 不存在，就会被赋予 int 的零值，也就是 0
+
+所以无法通过 v 值判断出，究竟是因为 key1 不存在返回的零值，还是因为 key1 本身对应的 value 就是 0
+
+使用 “comma ok” 惯用法对 map 进行键查找和键值读取操作：
 
     m := make(map[string]int)
     v, ok := m["key1"]
@@ -343,7 +366,7 @@ map 类似的容量不受限于它的初始容量值，当元素数量超过初�
 
 #### 删除数据
 
-使用内置函数 delete 来从 map 中删除数据：
+使用**内置函数 delete** 从 map 中删除数据：
 
     m := map[string]int {
       "key1" : 1,
@@ -354,7 +377,7 @@ map 类似的容量不受限于它的初始容量值，当元素数量超过初�
     delete(m, "key2") // 删除"key2"
     fmt.Println(m) // map[key1:1]
 
-delete 函数是从 map 中删除键的唯一方法
+delete 函数是从 map 中删除键的**唯一方法**
 
 即便传给 delete 的键在 map 中并不存在，delete 函数的执行也不会失败，更不会抛出运行时的异常
 
@@ -382,7 +405,7 @@ delete 函数是从 map 中删除键的唯一方法
       // 使用k
     }
 
-只关心每次迭代返回的键所对应的 value：
+只关心每次迭代返回的键所对应的 value ：
 
     for _, v := range m {
       // 使用v
@@ -396,11 +419,27 @@ delete 函数是从 map 中删除键的唯一方法
 
 和切片类型一样，map 也是引用类型，实质上传递的也只是一个“描述符”，传递的开销是固定的，而且也很小
 
-而且以描述符传递的类型(map slice 引用 )，在函数或者方法内部中的修改对外部也是可以的
+而且以描述符传递的类型(map slice 引用 )，在函数或者方法内部中的修改对外部也是可见的
+
+    func foo(m map[string]int) {
+        m["key1"] = 11
+        m["key2"] = 12
+    }
+
+    func main() {
+        m := map[string]int{
+            "key1": 1,
+            "key2": 2,
+        }
+
+        fmt.Println(m) // map[key1:1 key2:2]  
+        foo(m)
+        fmt.Println(m) // map[key1:11 key2:12] 
+    }
 
 ### map 的内部实现
 
-Go 运行时使用一张哈希表来实现抽象的 map 类型，实现了包括查找、插入、删除等
+Go 运行时使用一张哈希表来实现抽象的 map 类型，运行时实现了 map 类型的所有操作，包括查找、插入、删除等
 
 Go 编译器会将语法层面的 map 操作，**重写成运行时对应的函数调用**：
 
@@ -410,7 +449,7 @@ Go 编译器会将语法层面的 map 操作，**重写成运行时对应的函�
     // 插入新键值对或给键重新赋值
     m["key"] = "value" → v := runtime.mapassign(maptype, m, "key") v是用于后续存储value的空间的地址
 
-    // 获取某键的值 
+    // 获取某键的值
     v := m["key"]      → v := runtime.mapaccess1(maptype, m, "key")
     v, ok := m["key"]  → v, ok := runtime.mapaccess2(maptype, m, "key")
 
@@ -427,7 +466,7 @@ map 实例不是并发写安全的，也不支持并发读写，如果对 map �
 
 注意，因为 map 可以自动扩容，map 中数据元素的 value 位置可能在这一过程中发生变化
 
-所以 Go 不允许获取 map 中 value 的地址，这个约束在编译期间就生效，如果对 value 取地址就会报编译错误：
+所以 **Go 不允许获取 map 中 value 的地址，这个约束在编译期间就生效**，如果对 value 取地址就会报编译错误：
 
     p := &m[key]  // cannot take the address of m[key]
     fmt.Println(p)
