@@ -592,48 +592,71 @@ for 语句的常见 “坑” 点通常和 for range 这个 “语法糖” 有�
             // 执行默认分支
     }
 
-* initStmt 是一个可选的组成部分
-* 可以在 initStmt 中通过短变量声明定义一些临时变量
-* 每个分支以 case 关键字开始
-* default 关键字开始的是默认分支
-* 如果 expr 的求值结果与某个 case 的求值结果相同(以第一个匹配到得为准)，就会执行该 case 对应的代码分支，并退出 switch 语句
+* initStmt 是一个可选的组成部分，可在其中通过短变量声明定义一些临时变量
+* 每个分支以 case 关键字开始，default 关键字开始的是**默认分支**
+* 如果 expr 的求值结果与某个 case 的求值结果相同(以第一个匹配到得为准)，就会执行该 case 对应的代码分支，**并退出 switch 语句**
 * 先对 switch expr 表达式进行求值，然后再按 case 语句的出现顺序，从上到下进行逐一求值
 * 匹配到某个分支后，这个分支后面的 case 表达式将不会再得到求值机会
-* 无论 default 分支出现在什么位置，它都只会在所有 case 都没有匹配上的情况下才会被执行的
+* 无论 default 分支出现在什么位置，它都只会在所有 case 都匹配不上的情况下才会被执行
 * 将匹配成功概率高的 case 表达式排在前面，就会有助于提升 switch 语句执行效率
 
 #### Go 语言 switch 语句的灵活性
 
 * 各表达式的求值结果可以为各种类型值，只要它的类型支持比较操作就可以
-* 支持声明临时变量
-* 支持表达式列表，比如 case 1, 2, 3, 4, 5:
+* initStmt 可用来声明只在这个 switch 隐式代码块中使用的临时变量
+* 支持表达式列表，条件满足其中之一即可，比如 case 1, 2, 3, 4, 5:
 * 取消了默认执行下一个 case 代码逻辑的语义(不需要break)，如果要执行下一个使用 fallthrough 关键字
+
+    switch a {
+    case 1, 2, 3, 4, 5:
+        println("it is a work day")
+    case 6, 7:
+        println("it is a weekend day")
+        fallthrough
+    default:
+        println("are you live on earth")
+    }
 
 #### type switch
 
-switch 关键字后面跟着的表达式为x.(type)，这种表达式形式是 switch 语句专有的，这个表达式中的 **x 必须是一个接口类型变量**，表达式的求值结果是这个接口类型变量对应的动态类型：
+switch 关键字后面跟着的表达式为x.(type)，这种表达式形式是 switch 语句专有的，这个表达式中的 **x 必须是一个接口类型变量**，表达式的求值结果是这个接口类型变量对应的动态类型
 
-    func main() {
-        var x interface{} = 13
-        switch v := x.(type) { // 也能获得动态类型对应的值信息
-        case nil:
-            println("v is nil")
-        case int:
-            println("the type of v is int, v =", v)
-        case string:
-            println("the type of v is string, v =", v)
-        case bool:
-            println("the type of v is bool, v =", v)
-        default:
-            println("don't support the type")
-        }
+具体的使用形式：
+
+    var x interface{} = 13
+    switch x.(type) {                               // 根据传入的值计算出它的动态类型
+    case nil:                                       // case 关键字后面是一个个具体的类型
+        println("x is nil")
+    case int:
+        println("the type of x is int")
+    case string:
+        println("the type of x is string")
+    case bool:
+        println("the type of x is string")
+    default:
+        println("don't support the type")
     }
 
-如果在 switch 后面使用了某个特定的接口类型 I，那么 case 后面就只能使用实现了接口类型 I 的类型了
+也能获得其动态类型对应的值信息：
 
-#### 关于 break
+    var x interface{} = 13
+    switch v := x.(type) {                          // 这里的v存储的是变量x的动态类型对应的值信息
+        println("v is nil")
+    case int:
+        println("the type of v is int, v =", v)
+    case string:
+        println("the type of v is string, v =", v)
+    case bool:
+        println("the type of v is bool, v =", v)
+    default:
+        println("don't support the type")
+    }
 
-不带 label 的 break 语句中断执行并跳出的，是同一函数内 break 语句所在的最内层的 for、switch 或 select
+如果在 switch 后面使用了某个特定的接口类型，那么 case 后面就只能使用实现了该接口类型的类型了
+
+#### 跳不出循环中 switch 语句的 break
+
+**不带 label 的 break 语句中断执行并跳出的，是同一函数内 break 语句所在的最内层的 for、switch 或 select**
 
 所以想要在一个 for 循环中的 switch 语句中进行跳出操作，需要配合 label 使用：
 
