@@ -146,6 +146,8 @@ Go 闭包是在函数内部创建的匿名函数，这个匿名函数可以访�
 
 ## 结合多返回值进行错误处理
 
+Go 函数增加了多返回值机制，来支持错误状态与返回信息的分离
+
 Go 语言惯用法，是使用 error 这个接口类型表示错误，并且按惯例，我们通常将 error 类型返回值放在返回值列表的末尾：
 
     // fmt包
@@ -153,14 +155,16 @@ Go 语言惯用法，是使用 error 这个接口类型表示错误，并且按�
 
 ### error 类型与错误值构造
 
-error 接口是 Go 原生内置的类型：
+error 接口是 Go 原生内置的类型，定义如下：
 
     // $GOROOT/src/builtin/builtin.go
     type interface error {
         Error() string
     }
 
-不需要为了构造一个错误值，去自定义一个新类型来实现 error 接口，标准库中提供了两种方便 Go 开发者构造错误值的方法： errors.New 和 fmt.Errorf：
+任何实现了 error 的 Error 方法的类型的实例，都可以作为错误值赋值给 error 接口变量
+
+但是也不需要为了构造一个错误值，去自定义一个新类型来实现 error 接口，标准库中提供了两种方便 Go 开发者构造错误值的方法 errors.New 和 fmt.Errorf：
 
     err := errors.New("your first demo error")
     errWithCtx = fmt.Errorf("index %d is out of bounds", i)
