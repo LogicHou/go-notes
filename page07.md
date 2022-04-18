@@ -169,7 +169,9 @@ error 接口是 Go 原生内置的类型，定义如下：
     err := errors.New("your first demo error")
     errWithCtx = fmt.Errorf("index %d is out of bounds", i)
 
-这两种方法实际上返回的是同一个实现了 error 接口的类型的实例 errors.errorString ：
+这两种方法实际上返回的是同一个实现了 error 接口的类型的实例
+
+未导出类型 errors.errorString 的定义：
 
     // $GOROOT/src/errors/errors.go
 
@@ -184,14 +186,16 @@ error 接口是 Go 原生内置的类型，定义如下：
 ### 使用 error 类型的好处
 
 * 统一了错误类型，提升代码可读性的同时，还更容易形成统一的错误处理策略
-* 错误是值，可以对错误做“==”和“!=”的逻辑比较，函数调用者检视错误时的体验保持不变
+* 错误是值，可以对错误做 “==” 和 “!=” 的逻辑比较，函数调用者检视错误时的体验保持不变
 * 易扩展，支持自定义错误上下文
 
 ### 错误处理策略
 
+Go 语言中的错误处理，就是根据函数 / 方法返回的 error 类型变量中携带的错误值信息做决策，并选择后续代码执行路径的过程
+
 #### 策略一：透明错误处理策略
 
-不关心返回错误值携带的具体上下文信息，只要发生错误就进入唯一的错误处理执行路径：
+完全不关心返回错误值携带的具体上下文信息，只要发生错误就进入唯一的错误处理执行路径：
 
     err := doSomething()
     if err != nil {
@@ -208,9 +212,11 @@ error 接口是 Go 原生内置的类型，定义如下：
 
 在错误处理方不关心错误值上下文的前提下，透明错误处理策略能最大程度地减少错误处理方与错误值构造方之间的耦合关系
 
+这也是 Go 语言中**最常见的错误处理策略**
+
 #### 策略二：“哨兵”错误处理策略
 
-Go 标准库采用了定义导出的（Exported）“哨兵”错误值的方式，来辅助错误处理方检视（inspect）错误值并做出错误处理分支的决策，比如下面的 bufio 包中定义的“哨兵错误”：
+Go 标准库采用了定义导出的“哨兵”错误值的方式，来辅助错误处理方检视错误值并做出错误处理分支的决策，比如下面的 bufio 包中定义的“哨兵错误”：
 
 // $GOROOT/src/bufio/bufio.go
 var (
@@ -240,6 +246,8 @@ var (
         }
     }
 
+基于“哨兵“的错误处理方式，使这些错误值和包的公共函数 / 方法一起成为了 API 的一部分，错误值也让使用这些值的错误处理方对它产生了依赖，一旦发布出去，开发者就要对它进行很好的维护，一旦“哨兵“发生了变动，依赖“哨兵“错误值的程序可能就会产生意想不到的错误
+
 使用 Is 函数类似于把一个 error 类型变量与“哨兵”错误值进行比较：
 
     // 类似 if err == ErrOutOfBounds{ … }
@@ -247,16 +255,16 @@ var (
         // 越界的错误处理
     }
 
-如果 error 类型变量的底层错误值是一个包装错误（Wrapped Error），errors.Is 方法会沿着该包装错误所在错误链（Error Chain)，与链上所有被包装的错误（Wrapped Error）进行比较，直至找到一个匹配的错误为止：
+如果 error 类型变量的底层错误值是一个包装错误，errors.Is 方法会沿着该包装错误所在错误链，与链上所有被包装的错误进行比较，直至找到一个匹配的错误为止：
 
     var ErrSentinel = errors.New("the underlying sentinel error")
 
     func main() {
       err1 := fmt.Errorf("wrap sentinel: %w", ErrSentinel) // err1 包装了 ErrSentinel
-      err2 := fmt.Errorf("wrap err1: %w", err1) // err2 包装了 err1
-        println(err2 == ErrSentinel) //false
-      if errors.Is(err2, ErrSentinel) {
-        println("err2 is ErrSentinel")
+      err2 := fmt.Errorf("wrap err1: %w", err1)            // err2 包装了 err1
+      println(err2 == ErrSentinel)                         // 直接进行判断会返回 false
+      if errors.Is(err2, ErrSentinel) {                    // 使用 Is 则会才链上进行查找比较
+        println("err2 is ErrSentinel")                     // err2 is ErrSentinel 从链上找到了 ErrSentinel 错误，输出结束程序并返回
         return
       }
 
@@ -267,11 +275,17 @@ var (
     false
     err2 is ErrSentinel
 
-如果使用的是 Go 1.13 及后续版本，建议尽量使用errors.Is方法去检视某个错误值是否就是某个预期错误值，或者包装了某个特定的“哨兵”错误值
+如果使用的是 Go 1.13 及后续版本，建议尽量使用 errors.Is 方法去检视某个错误值是否就是某个预期错误值，或者包装了某个特定的“哨兵”错误值
 
 #### 策略三：错误值类型检视策略
 
-标准库的 json 包中自定义了一个UnmarshalTypeError的错误类型：
+“哨兵”错误处理策略，除了让错误处理方可以“有的放矢”的进行值比较之外，并没有提供其他有效的错误上下文信息
+
+如果遇到错误处理方需要错误值提供更多的“错误上下文”的情况，需要通过自定义错误类型的构造错误值的方式，来提供**更多的“错误上下文”信息**
+
+由于错误值都通过 error 接口变量统一呈现，要得到底层错误类型携带的错误上下文信息，错误处理方需要使用 Go 提供的**类型断言机制**或**类型选择机制**，即错误值类型检视策略
+
+通过标准库的 json 包中自定义了一个 UnmarshalTypeError 的错误类型来理解实现：
 
     // $GOROOT/src/encoding/json/decode.go
     type UnmarshalTypeError struct {
@@ -282,9 +296,22 @@ var (
         Field  string      
     }
 
-如果遇到错误处理方需要错误值提供更多的“错误上下文”的情况，需要通过自定义错误类型的构造错误值的方式，来提供更多的“错误上下文”信息
+    // $GOROOT/src/encoding/json/decode.go
+    func (d *decodeState) addErrorContext(err error) error {
+        if d.errorContext.Struct != nil || len(d.errorContext.FieldStack) > 0 {
+            switch err := err.(type) {
+            case *UnmarshalTypeError:   <--此处通过类型断言匹配到错误类型
+                err.Struct = d.errorContext.Struct.Name() <--构建错误值携带上下文信息
+                err.Field = strings.Join(d.errorContext.FieldStack, ".") <--构建错误值携带上下文信息
+                return err
+            }
+        }
+        return err
+    }
 
-标准库 errors 包提供了As函数给错误处理方检视错误值，类似于通过类型断言判断一个 error 类型变量是否为特定的自定义错误类型：
+同样一旦发布出去，开发者就要对它们进行很好的维护，也让使用这些类型进行检视的错误处理方对其产生了依赖
+
+标准库 errors 包提供了 As 函数给错误处理方检视错误值，类似于通过类型断言判断一个 error 类型变量是否为特定的自定义错误类型：
 
     // 类似 if e, ok := err.(*MyError); ok { … }
     var e *MyError
@@ -292,7 +319,7 @@ var (
         // 如果err类型为*MyError，变量e将被设置为对应的错误值
     }
 
-如果 error 类型变量的动态错误值是一个包装错误，errors.As函数会沿着该包装错误所在错误链，与链上所有被包装的错误的类型进行比较，直至找到一个匹配的错误类型：
+如果 error 类型变量的动态错误值是一个包装错误，errors.As 函数会沿着该包装错误所在错误链，与链上所有被包装的错误的类型进行比较，直至找到一个匹配的错误类型：
 
     type MyError struct {
         e string
@@ -307,26 +334,91 @@ var (
         err1 := fmt.Errorf("wrap err: %w", err)   // err1 包装了 err
         err2 := fmt.Errorf("wrap err1: %w", err1) // err2 包装了 err1
         var e *MyError
-        if errors.As(err2, &e) {
+        if errors.As(err2, &e) {                  // 如果匹配成功，将错误值存到e中
             println("MyError is on the chain of err2")
             println(e == err)                  
             return                             
         }                                      
         println("MyError is not on the chain of err2")
-    } 
+    }
 
-Go 1.13 及后续版本，尽量使用errors.As方法去检视某个错误值是否是某自定义错误类型的实例
+    // 输出
+    MyError is on the chain of err2
+    true
+
+Go 1.13 及后续版本，尽量使用 errors.As 方法去检视某个错误值是否是某自定义错误类型的实例
 
 #### 策略四：错误行为特征检视策略
 
-将某个包中的错误类型归类，统一提取出一些公共的错误行为特征，并将这些错误行为特征放入一个公开的接口类型中
+前面三种除了“透明错误处理策略”，都在错误的构造方与错误处理方两者之间建立了耦合
+
+为了降低错误处理方与错误值构造方的耦合，**将某个包中的错误类型归类，统一提取出一些公共的错误行为特征，并将这些错误行为特征放入一个公开的接口类型中**，即错误行为特征检视策略
+
+以标准库中的net包为例：
+
+    // $GOROOT/src/net/net.go
+    type Error interface {
+        error
+        Timeout() bool    // 用于判断是否是超时错误
+        Temporary() bool  // 用于判断是否是临时错误
+    }
+
+错误处理方只需要依赖这个公共接口，就可以检视具体错误值的错误行为特征信息，并根据这些信息做出后续错误处理分支选择的决策：
+    
+    // $GOROOT/src/net/http/server.go
+    func (srv *Server) Serve(l net.Listener) error {
+        ... ...
+        for {
+            rw, e := l.Accept()  // Accept 方法实际上返回的错误类型为*OpError
+            if e != nil {
+                select {
+                case <-srv.getDoneChan():
+                    return ErrServerClosed
+                default:
+                }
+                if ne, ok := e.(net.Error); ok && ne.Temporary() { // 如果是net.Error接口错误类型，就把错误传给变量 ne
+                    // 注：这里对临时性(temporary)错误进行处理
+                    ... ...
+                    time.Sleep(tempDelay)
+                    continue
+                }
+                return e
+            }
+            ...
+        }
+        ... ...
+    }
+
+*OpError，它是 net 包中的一个自定义错误类型，实现了错误公共特征接口 net.Error ：
+
+    // $GOROOT/src/net/net.go
+    type OpError struct {
+        ... ...
+        // Err is the error that occurred during the operation.
+        Err error
+    }
+
+    type temporary interface {
+        Temporary() bool
+    }
+
+    func (e *OpError) Temporary() bool {
+      if ne, ok := e.Err.(*os.SyscallError); ok {
+          t, ok := ne.Err.(temporary)
+          return ok && t.Temporary()
+      }
+      t, ok := e.Err.(temporary)
+      return ok && t.Temporary()
+    }
 
 ### 错误处理方式选择路径
 
-* 请尽量使用“透明错误”处理策略，降低错误处理方与错误值构造方之间的耦合
-* 如果可以通过错误值类型的特征进行错误检视，那么请尽量使用“错误行为特征检视策略”
-* 在上述两种策略无法实施的情况下，再使用“哨兵”策略和“错误值类型检视”策略
-* Go 1.13 及后续版本中，尽量用errors.Is和errors.As函数替换原先的错误检视比较语句
+**没有某种单一的错误处理策略可以适合所有项目或所有场合**
+
+* 请尽量使用 “透明错误” 处理策略，降低错误处理方与错误值构造方之间的耦合
+* 如果可以通过错误值类型的特征进行错误检视，那么请尽量使用 “错误行为特征检视策略”
+* 在上述两种策略无法实施的情况下，再使用 “哨兵” 策略和 “错误值类型检视” 策略
+* Go 1.13 及后续版本中，尽量用 errors.Is 和 errors.As 函数替换原先的错误检视比较语句
 
 ## 如何让函数更简洁健壮
 
