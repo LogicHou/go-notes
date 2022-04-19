@@ -376,7 +376,7 @@ Go 1.13 及后续版本，尽量使用 errors.As 方法去检视某个错误值�
                     return ErrServerClosed
                 default:
                 }
-                if ne, ok := e.(net.Error); ok && ne.Temporary() { // 如果是net.Error接口错误类型，就把错误传给变量 ne
+                if ne, ok := e.(net.Error); ok && ne.Temporary() { // 如果是net.Error接口错误类型，就把错误传给变量ne
                     // 注：这里对临时性(temporary)错误进行处理
                     ... ...
                     time.Sleep(tempDelay)
@@ -422,7 +422,7 @@ Go 1.13 及后续版本，尽量使用 errors.As 方法去检视某个错误值�
 
 ## 如何让函数更简洁健壮
 
-健壮函数的几个特点：
+健壮函数意味着：
 
 * 无论调用者如何使用你的函数，你的函数都能以合理的方式处理调用者的任何输入，并给调用者返回预设的、清晰的错误值
 
@@ -433,7 +433,7 @@ Go 1.13 及后续版本，尽量使用 errors.As 方法去检视某个错误值�
 ### 健壮性的“三不要”原则
 
 * 不要相信任何外部输入的参数
-  * 对所有输入的参数进行合法性的检查
+  * 需要对所有输入的参数进行合法性的检查
   * 一旦发现问题，立即终止函数的执行，返回预设的错误值
 * 不要忽略任何一个错误
   * 不能假定函数或方法一定会成功，一定要显式地检查这些调用返回的错误值
@@ -441,18 +441,15 @@ Go 1.13 及后续版本，尽量使用 errors.As 方法去检视某个错误值�
 * 不要假定异常不会发生
   * 异常不是错误，错误是可预期的，也是经常会发生的，我们有对应的公开错误码和错误处理预案
   * 异常却是少见的、意料之外的，比如硬件异常、操作系统异常、语言运行时异常，还有更大可能是代码中潜在 bug 导致的异常
-  * 根据函数的角色和使用场景，考虑是否要在函数内设置异常捕捉和恢复的环节
+  * 不要假定异常这种“小众事件”不会发生，根据函数的角色和使用场景，考虑是否要在函数内设置异常捕捉和恢复的环节
 
 ## Go 语言中的异常：panic
 
-panic 指的是 Go 程序在运行时出现的一个异常情况
+panic 是指 Go 程序在运行时出现的一个异常情况
 
-如果异常出现了，但没有被捕获并恢复，Go 程序的执行就会被终止，即便出现异常的位置不在主 Goroutine 中也会这样
+如果没有**捕获并恢复**出现的异常，Go 程序的执行就会被终止，即便出现异常的位置不在主 Goroutine 中也是如此
 
-panic 主要有两类来源：
-
-* 一类是来自 Go 运行时
-* 另一类则是 Go 开发人员通过 panic 函数主动触发的
+panic 主要有两类来源，一类是来自 **Go 运行时**，另一类则是 **Go 开发人员通过 panic 函数主动触发的**
 
 无论是哪种，一旦 panic 被触发，后续 Go 程序的执行过程都是一样的，这个过程被 Go 语言称为 panicking：
 
@@ -464,7 +461,7 @@ panic 主要有两类来源：
 
     func bar() {
         println("call bar")
-        panic("panic occurs in bar")
+        panic("panic occurs in bar") // 调用panic后bar函数自身停止，这个 panic 就会沿着函数调用栈向上走
         zoo()
         println("exit bar")
     }
@@ -513,47 +510,57 @@ panic 主要有两类来源：
 
 ### 如何应对 panic
 
+其实不是很需要可以去关注 panic 的处理问题，对简单函数处理增加 panic 捕获和恢复，反倒会增加函数的复杂性
+
+过多的关注 panic 问题，一来徒增开发人员函数实现时的心智负担，二来很多函数非常简单，根本不会出现 panic 情况
+
+同时，defer 函数也会带来额外的性能开销
+
 #### 第一点：评估程序对 panic 的忍受度
 
-不同应用对异常引起的程序崩溃退出的忍受度是不一样的。比如，一个单次运行于控制台窗口中的命令行交互类程序（CLI），和一个常驻内存的后端 HTTP 服务器程序，对异常崩溃的忍受度就是不同的
+不同应用对异常引起的程序崩溃退出的忍受度是不一样的
+
+一个单次运行于控制台窗口中的命令行交互类程序（CLI），即便因异常崩溃，对用户来说也仅仅是再重新运行一次而已
+
+一个常驻内存的后端 HTTP 服务器程序，一旦崩溃就很可能导致整个网站停止服务，所以像后端 HTTP 服务器程序这样的任务关键系统，就需要在特定位置捕捉并恢复 panic，以保证服务器整体的健壮度
+
+采用**局部不要影响整体**的异常处理策略，并且通常将捕捉和恢复 panic 的位置都放在子 Goroutine 的起始处，这样设置可以捕捉到后面代码中可能出现的所有 panic
 
 #### 第二点：提示潜在 bug
 
-我们经常在一些代码执行路径上，使用断言来表达这段执行路径上某种条件一定为真的信心
+在其他语言中，经常在一些代码执行路径上，使用断言来表达这段执行路径上某种条件一定为真的信心
 
 断言为真，则程序处于正确运行状态，断言为否就是出现了意料之外的问题，而这个问题很可能就是一个潜在的 bug，这时我们可以借助断言信息快速定位到问题所在
 
 Go 语言标准库中并没有提供断言之类的辅助函数，但可以使用 panic，部分模拟断言对潜在 bug 的提示功能：
 
-    func (d *decodeState) valueQuoted() interface{} {
-        switch d.opcode {
-        default:  // 出现了意料之外的问题
-            panic(phasePanicMsg)
+    // $GOROOT/src/encoding/json/encode.go
 
-        case scanBeginArray, scanBeginObject: // 正确的分支
-            ...
-
-        case scanBeginLiteral: // 正确的分支
-            v := d.literalInterface()
-            ...
+    func (w *reflectWithString) resolve() error {
+        ... ...
+        switch w.k.Kind() {
+        case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+            w.ks = strconv.FormatInt(w.k.Int(), 10)
+            return nil
+        case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+            w.ks = strconv.FormatUint(w.k.Uint(), 10)
+            return nil
         }
-        return unquotedValue{}
+        panic("unexpected map key type") // 也可以放到default分支中
     }
 
-在 Go 标准库中，大多数 panic 的使用都是充当类似断言的作用
+在 Go 标准库中，**大多数 panic 的使用都是充当类似断言的作用**
 
 ### 第三点：不要混淆异常与错误
 
-一旦在编写的 API 中，像checked exception那样使用 panic 作为正常错误处理的手段，把引发的panic当作错误，那么你就会给你的 API 使用者带去大麻烦！
-
-因此，在 Go 中，作为 API 函数的作者，你一定不要将 panic 当作错误返回给 API 调用者
+在 Go 中，不要把 panic 当作 try catdh 来使用，作为 API 函数的作者，一定**不要将 panic 当作错误返回给 API 调用者**
 
 ## 使用 defer 简化函数实现
 
 defer 是 Go 语言提供的一种延迟调用机制，defer 的运作离不开函数：
 
 * 在 Go 中，只有在函数（和方法）内部才能使用 defer
-* defer 关键字后面只能接函数（或方法），这些函数被称为 deferred 函数。defer 将它们注册到其所在 Goroutine 中，用于存放 deferred 函数的栈数据结构中，这些 deferred 函数将在执行 defer 的函数退出前，按后进先出（LIFO）的顺序被程序调度执行
+* defer 关键字后面只能接函数（或方法），这些函数被称为** deferred 函数**。defer 将它们注册到其所在 Goroutine 中，用于存放 deferred 函数的栈数据结构中，这些 deferred 函数将在执行 defer 的函数退出前，按后进先出（LIFO）的顺序被程序调度执行
 * 无论是执行到函数体尾部返回，还是在某个错误处理分支显式 return，又或是出现 panic，已经存储到 deferred 函数栈中的函数，都会被调度执行
 
 ### defer 使用的几个注意事项
@@ -564,11 +571,15 @@ defer 是 Go 语言提供的一种延迟调用机制，defer 的运作离不开�
 
 Go 语言中除了自定义函数 / 方法，还有 Go 语言内置的 / 预定义的函数
 
-其中 append、cap、len、make、new、imag 等内置函数都是不能直接作为 deferred 函数的
+不能直接作为 deferred 函数的内置函数有：
 
-而 close、copy、delete、print、recover 等内置函数则可以直接被 defer 设置为 deferred 函数
+    append、cap、len、make、new、imag 等
 
-对于那些不能直接作为 deferred 函数的内置函数，我们可以使用一个包裹它的匿名函数来间接满足要求：
+可以直接被 defer 设置为 deferred 函数的内置函数有：
+
+    close、copy、delete、print、recover 等
+
+对于那些不能直接作为 deferred 函数的内置函数，可以使用一个包裹它的匿名函数来间接满足要求：
 
     defer func() {
       _ = append(sl, 11)
@@ -576,7 +587,7 @@ Go 语言中除了自定义函数 / 方法，还有 Go 语言内置的 / 预定�
 
 #### 第二点：注意 defer 关键字后面表达式的求值时机
 
-defer 关键字后面的表达式，是在将 deferred 函数注册到 deferred 函数栈的时候进行求值的：
+**defer 关键字后面的表达式，是在将 deferred 函数注册到 deferred 函数栈的时候进行求值的**：
 
     func foo1() {
         for i := 0; i <= 3; i++ {
