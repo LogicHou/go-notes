@@ -2,7 +2,7 @@
 
 ## channel 也是一等公民
 
-可以像使用普通变量那样使用 channel，定义 channel 类型变量、给 channel 变量赋值、将 channel 作为参数传递给函数 / 方法、将 channel 作为返回值从函数 / 方法中返回，甚至将 channel 发送到其他 channel 中
+可以**像使用普通变量那样使用 channel**，比如定义 channel 类型变量、给 channel 变量赋值、将 channel 作为参数传递给函数 / 方法、将 channel 作为返回值从函数 / 方法中返回，甚至将 channel 发送到其他 channel 中
 
 ### 创建 channel
 
@@ -12,18 +12,20 @@
 
     var ch chan int
 
-为 channel 类型变量赋初值的唯一方法就是使用 make 这个 Go 预定义的函数：
+为 channel 类型变量赋初值的唯一方法就是使用 **make** 这个 Go 预定义的函数：
 
     ch1 := make(chan int)    // 无缓冲 channel
     ch2 := make(chan int, 5) // 带缓冲 channel
     
-使用操作符<-，还可以声明只发送 channel 类型（send-only）和只接收 channel 类型（recv-only）：
+使用操作符 <- ，还可以声明只发送 channel 类型（send-only）和只接收 channel 类型（recv-only）：
 
     ch1 := make(chan<- int, 1) // 只发送channel类型
     ch2 := make(<-chan int, 1) // 只接收channel类型
 
     <-ch1       // invalid operation: <-ch1 (receive from send-only type chan<- int)
     ch2 <- 13   // invalid operation: ch2 <- 13 (send to receive-only type <-chan int)
+
+通常只发送 channel 类型和只接收 channel 类型，会被用作函数的参数类型或返回值，用于限制对 channel 内的操作，或者是明确可对 channel 进行的操作的类型
 
 
 ### 发送与接收
@@ -37,43 +39,22 @@
 
 根据 <- 符号在通道左右的位置有一个记忆口诀，就是“左接右发”
 
-非常重要的一个概念：**channel 是用于 Goroutine 间通信的**，所以绝大多数对 channel 的读写都被分别放在了不同的 Goroutine 中
+非常重要的一个概念：**channel 是用于 Goroutine 间通信的**，所以绝大多数对 channel 的读写都被分别放在了**不同的 Goroutine 中**
 
 **从一个已关闭的 channel 接收数据将永远不会被阻塞**
 
 对一个 nil channel 执行获取操作，这个操作将阻塞
 
-#### 通过 for range 接收数据
-
-通过使用 for range 循环语句从 channel 中接收数据，for range 会阻塞在对 channel 的接收操作上，直到 channel 中有数据可接收或 channel 被关闭循环，才会继续向下执行
-
-channel 被关闭后，for range 循环也就结束了，如果 channel 里有数据，for range 会接收完里面的数据再结束：
-
-    var jobs = make(chan int, 10)
-
-    func main() {
-      go func() {
-        for i := 0; i < 8; i++ {
-          jobs <- (i + 1)
-        }
-        close(jobs)
-      }()
-
-      for j := range jobs {
-        fmt.Println(j) // 输出 1 2 3 4 5 6 7 8
-      }
-    }
-
-### 无缓冲 channel
+#### 无缓冲 channel 的发送与接收
 
 Goroutine 对不带有缓冲区的无缓冲 channel 的接收和发送操作是同步的
 
-对同一个无缓冲 channel，只有对它进行接收操作的 Goroutine 和对它进行发送操作的 Goroutine 都存在的情况下，通信才能得以进行，否则单方面的操作会让对应的 Goroutine 陷入挂起状态：
+对同一个无缓冲 channel，**只有对它进行接收操作的 Goroutine 和对它进行发送操作的 Goroutine 都存在的情况下，通信才能得以进行**，否则单方面的操作会让对应的 Goroutine 陷入挂起状态：
 
     func main() {
         ch1 := make(chan int)
         ch1 <- 13 // fatal error: all Goroutines are asleep - deadlock!
-        n := <-ch1
+        n := <-ch1 // 对 ch1 的读写都放在了一个 Goroutine 中
         println(n)
     }
 
@@ -90,9 +71,9 @@ Goroutine 对不带有缓冲区的无缓冲 channel 的接收和发送操作是�
 
 **对无缓冲 channel 类型的发送与接收操作，一定要放在两个不同的 Goroutine 中进行，否则会导致 deadlock**
 
-### 带缓冲 channel
+#### 带缓冲 channel 的发送与接收
 
-带缓冲 channel 的运行时层实现带有缓冲区，因此，对带缓冲 channel 的发送操作在缓冲区未满、接收操作在缓冲区非空的情况下是**异步**的（发送或接收不需要阻塞等待）
+对带缓冲区 channel 的发送操作在缓冲区未满、接收操作在缓冲区非空的情况下是**异步**的（发送或接收不需要阻塞等待）
 
 对一个带缓冲 channel 来说：
 
@@ -100,8 +81,6 @@ Goroutine 对不带有缓冲区的无缓冲 channel 的接收和发送操作是�
 * 在缓冲区有数据的情况下，对它进行接收操作的 Goroutine 也不会阻塞挂起
 * 当缓冲区满了的情况下，对它进行发送操作的 Goroutine 就会阻塞挂起
 * 当缓冲区为空的情况下，对它进行接收操作的 Goroutine 也会阻塞挂起
-
-简单的概括就是，满了发送会阻塞，空了接收会阻塞
 
 示例：
 
@@ -112,6 +91,29 @@ Goroutine 对不带有缓冲区的无缓冲 channel 的接收和发送操作是�
     ch3 <- 17  // 向ch3发送一个整型数17
     ch3 <- 27  // 由于此时ch3中缓冲区已满，再向ch3发送数据也将导致Goroutine挂起
 
+#### 通过 for range 接收数据
+
+通过使用 for range 循环语句从 channel 中接收数据，for range 会阻塞在对 channel 的接收操作上，直到 channel 中有数据可接收或 channel 被关闭循环，才会继续向下执行
+
+channel 被关闭后，for range 循环也就结束了，如果 channel 里有数据，for range 会接收完里面的数据再结束：
+
+    var jobs = make(chan int, 10)
+
+    func main() {
+      go func() {
+        for i := 0; i < 8; i++ {
+          jobs <- (i + 1)
+        }
+        close(jobs) // 如果不关闭channel，会造成程序死锁
+      }()
+
+      for j := range jobs { // 使用 for range 从channle中获取数据会在当前位置阻塞
+        fmt.Println(j) // 输出 1 2 3 4 5 6 7 8
+      }
+    }
+
+如果不关闭 channel，for range 就会一直从 channel 获取数据造成死锁
+
 ### 关闭 channel
 
 channel 关闭后，所有等待从这个 channel 接收数据的操作都将返回，也就是解除阻塞可以继续向下执行代码
@@ -120,7 +122,7 @@ channel 关闭后，所有等待从这个 channel 接收数据的操作都将返
 
     n := <- ch      // 当ch被关闭后，n将被赋值为ch元素类型的零值
     m, ok := <-ch   // 当ch被关闭后，m将被赋值为ch元素类型的零值, ok值为false
-    for v := range ch { // 当ch被关闭后，for range循环结束，有数据会接收完数据
+    for v := range ch { // 当ch被关闭后，for range循环结束，有数据会接收完数据再结束
         ... ...
     }
 
@@ -128,9 +130,7 @@ channel 关闭后，所有等待从这个 channel 接收数据的操作都将返
 
 而单纯采用n := <-ch形式的语句，就无法判定从 ch 返回的元素类型零值，究竟是不是因为 channel 被关闭后才返回的
 
-**在发送端负责关闭 channel ，是 channel 的一个使用惯例**
-
-这是因为发送端没有像接受端那样的、可以安全判断 channel 是否被关闭了的方法
+**在发送端负责关闭 channel ，是 channel 的一个使用惯例**，这是因为发送端没有像接受端那样的、可以安全判断 channel 是否被关闭了的方法
 
 同时，一旦向一个已经关闭的 channel 执行发送操作，这个操作就会引发 panic ：
 
@@ -138,7 +138,7 @@ channel 关闭后，所有等待从这个 channel 接收数据的操作都将返
     close(ch)
     ch <- 13 // panic: send on closed channel
 
-再次提及，从一个已关闭的 channel 接收数据将永远不会被阻塞
+**再次提及，从一个已关闭的 channel 接收数据将永远不会被阻塞**，继续从一个关闭的 channel 获取数据，会得到这个 channel 对应类型的零值
 
 ### select
 
@@ -157,9 +157,7 @@ channel 关闭后，所有等待从这个 channel 接收数据的操作都将返
     default:             // 当上面case中的channel通信均无法实施时，执行该默认分支
     }
 
-当 select 语句中没有 default 分支，而且所有 case 中的 channel 操作都阻塞了的时候，整个 select 语句都将被阻塞
-
-直到某一个 case 上的 channel 变成可发送，或者某个 case 上的 channel 变成可接收，select 语句才可以继续进行下去
+当 select 语句中没有 default 分支，而且所有 case 中的 channel 操作都阻塞了的时候，整个 select 语句都将被阻塞，直到某一个 case 上的 channel 变成可发送，或者某个 case 上的 channel 变成可接收，select 语句才可以继续进行下去
 
 ### 无缓冲 channel 的惯用法
 
@@ -169,27 +167,35 @@ channel 关闭后，所有等待从这个 channel 接收数据的操作都将返
 
 无缓冲 channel 用作信号传递的时候，有两种情况，分别是 1 对 1 通知信号和 1 对 n 通知信号
 
-1 对 1 的情况下，可以通过在一个通道内返回一个专门用作通知 main Goroutine 的信号来结束阻塞动作，示例：
+**1 对 1 **的情况下，可以通过在一个通道内返回一个专门用作通知 main Goroutine 的信号来结束阻塞动作，示例：
 
     type signal struct{}
 
-    func main() {
+    func worker() {
+        println("worker is working...")
+        time.Sleep(1 * time.Second)
+    }
+
+    func spawn(f func()) <-chan signal {
         c := make(chan signal)
-        println("start a worker...")
         go func() {
             println("worker start to work...")
-            func() {
-                time.Sleep(3 * time.Second)
-            }()
+            f()
             c <- signal{}
         }()
-        <-c // 这里阻塞住了 main Goroutine 直到接收到信号才继续向下执行
+        return c
+    }
+
+    func main() {
+        println("start a worker...")
+        c := spawn(worker)
+        <-c // 这里阻塞住了 main Goroutine 直到接收到信号才继续向下执行，不阻塞住的话main goroutine就直接结束了
         fmt.Println("worker work done!")
     }
 
-1 对 n 的情况下，这样的信号通知机制，常被用于协调多个 Goroutine 一起工作
+**1 对 n** 的情况下，这样的信号通知机制，常被用于协调多个 Goroutine 一起工作
 
-比如在多个 Goroutine 中植入信号接收操作阻塞住各个 Goroutine 的执行，然后通过在 main Goroutine 中 close 通道解除阻塞是 Goroutine 中的逻辑继续执行：
+比如在多个 Goroutine 中植入信号接收操作阻塞住各个 Goroutine 的执行，然后通过在 main Goroutine 中 close 通道解除阻塞使 Goroutine 中的逻辑继续执行：
 
     type signal struct{}
 
@@ -242,7 +248,7 @@ channel 关闭后，所有等待从这个 channel 接收数据的操作都将返
       go func() {
         for {
           cter.i++
-          cter.c <- cter.i // 如果不接收就会阻塞住，这里用的时无缓冲 channel ，不能同时操作，实现了锁机制
+          cter.c <- cter.i // 如果不接收就会阻塞住，这里用的是无缓冲 channel ，不能同时操作，实现了锁机制
         }
       }()
       var wg sync.WaitGroup
@@ -277,9 +283,39 @@ channel 关闭后，所有等待从这个 channel 接收数据的操作都将返
 
 #### 第二种用法：用作计数信号量（counting semaphore）
 
+Go 并发设计的一个惯用法，就是将带缓冲 channel 用作计数信号量（counting semaphore）
+
 带缓冲 channel 中的当前数据个数代表的是(一种假设)，当前同时处于活动状态（处理业务）的 Goroutine 的数量，而带缓冲 channel 的容量（capacity），就代表了允许同时处于活动状态的 Goroutine 的最大数量
 
 向带缓冲 channel 的一个发送操作表示获取一个信号量，而从 channel 的一个接收操作则表示释放一个信号量
+
+示例：
+
+    var active = make(chan struct{}, 3) //一个容量（capacity）为 3 的带缓冲 channel: active 作为计数信号量，这意味着允许同时处于活动状态的最大 Goroutine 数量为 3
+    var jobs = make(chan int, 10)
+
+    func main() {
+        go func() {
+            for i := 0; i < 8; i++ {
+                jobs <- (i + 1)
+            }
+            close(jobs) // 因为下面用了range所以这里必须要关闭，不然range会一直读这个channel，会造成死锁
+        }()
+
+        var wg sync.WaitGroup
+
+        for j := range jobs { // 虽然上面已经提前close了jobs通道，但是jobs里有数据的话，下面的for range 还是会取完数据
+            wg.Add(1)
+            go func(j int) {
+                active <- struct{}{} // 往active发送了3个信号后会阻塞，同一时间允许最多 3 个 Goroutine 处于活动状态
+                log.Printf("handle job: %d\n", j)
+                time.Sleep(2 * time.Second) // 等2秒后这3个信号所挂钩的goroutine结束后，释放信号，for range继续往active中塞3个信号后继续阻塞，循环往复直到jobs的数据全部取完
+                <-active
+                wg.Done()
+            }(j)
+        }
+        wg.Wait()
+    }
 
 #### 第三种用法：实现锁机制
 
@@ -324,7 +360,7 @@ channel 原语用于多个 Goroutine 间的通信，一旦多个 Goroutine 共�
 
 所以单纯地依靠 len(channel) 来判断 channel 中元素状态，是不能保证在后续对 channel 的收发时 channel 状态是不变的
 
-因此，常见的方法是将 “判空与读取” 放在一个 “事务” 中，将 “判满与写入” 放在一个 “事务” 中，而这类 “事务” 可以通过 select 实现：
+因此，**为了不阻塞在 channel 上**，常见的方法是将 “判空与读取” 放在一个 “事务” 中，将 “判满与写入” 放在一个 “事务” 中，而这类 “事务” 可以通过 select 实现：
 
     func tryRecv(c <-chan int) (int, bool) {
         select {
@@ -344,13 +380,13 @@ channel 原语用于多个 Goroutine 间的通信，一旦多个 Goroutine 共�
         }
     }
 
-这种方法适用于大多数场合，但是这种方法有一个 “问题”，那就是它改变了 channel 的状态，会让 channel 接收了一个元素或发送一个元素到 channel
+这种方法适用于大多数场合，但是这种方法有一个 “问题”，那就是它改变了 channel 的状态，会让 channel 接收了一个元素或发送一个元素到 channel （也就是不往channel中发送或接收数据的前提下）
 
 如果想要单纯地侦测 channel 的状态，而又不会因 channel 满或空阻塞在 channel 上，目前没有一种方法可以在实现这样的功能的同时，适用于所有场合
 
 但是在特定的场景下，可以用 len(channel) 来实现，比如下面这两种场景：
 
-是一个 “多发送单接收” 的场景，也就是有多个发送者，但有且只有一个接收者，这时可以在接收 Goroutine 中使用 len(channel) 是否大于 0 来判断是否 channel 中有数据需要接收
+是一个 “多发送单接收” 的场景，也就是有多个发送者，但**有且只有一个接收者**，这时可以在接收 Goroutine 中使用 len(channel) 是否大于 0 来判断是否 channel 中有数据需要接收
 
     for {
       if len(c) > 0 {
@@ -359,7 +395,7 @@ channel 原语用于多个 Goroutine 间的通信，一旦多个 Goroutine 共�
       ......
     }
 
-是一个 “多接收单发送” 的场景，也就是有多个接收者，但有且只有一个发送者，这时可以在发送 Goroutine 中使用 len(channel) 是否小于 cap(channel) 来判断是否可以执行向 channel 的发送操作
+是一个 “多接收单发送” 的场景，也就是有多个接收者，但**有且只有一个发送者**，这时可以在发送 Goroutine 中使用 len(channel) 是否小于 cap(channel) 来判断是否可以执行向 channel 的发送操作
 
     for {
       if len(c) < cap(c) {
@@ -370,7 +406,7 @@ channel 原语用于多个 Goroutine 间的通信，一旦多个 Goroutine 共�
 
 ### nil channel
 
-如果一个 channel 类型变量的值为 nil，称为 nil channel，赋初值需要使用 make
+如果一个 channel 类型变量的值为 nil，称为 **nil channel**，赋初值需要使用 make
 
 nil channel 有一个特性，那就是对 nil channel 的读写都会发生阻塞：
 
@@ -386,7 +422,47 @@ nil channel 有一个特性，那就是对 nil channel 的读写都会发生阻�
       c<-1  //阻塞
     }
 
+这种特性非常适合用来处理从 channel 中获取完数据后，通过将关闭的 channel 设置为 nil, 从而可以作为结束某些逻辑的判断条件
+
+    func main() {
+        ch1, ch2 := make(chan int), make(chan int)
+        go func() {
+            time.Sleep(time.Second * 5)
+            ch1 <- 5
+            close(ch1)
+        }()
+
+        go func() {
+            time.Sleep(time.Second * 7)
+            ch2 <- 7
+            close(ch2)
+        }()
+
+        for {
+            select {
+            case x, ok := <-ch1:
+                if !ok {
+                    ch1 = nil
+                } else {
+                    fmt.Println(x)
+                }
+            case x, ok := <-ch2:
+                if !ok {
+                    ch2 = nil
+                } else {
+                    fmt.Println(x)
+                }
+            }
+            if ch1 == nil && ch2 == nil {
+                break
+            }
+        }
+        fmt.Println("program end")
+    }
+
 ### 与 select 结合使用的一些惯用法
+
+channel 和 select 的结合使用能形成强大的表达能力
 
 #### 利用 default 分支避免阻塞
 
@@ -427,19 +503,19 @@ select 语句的 default 分支的语义，就是在其他非 default 分支因�
 结合 time 包的 Ticker，我们可以实现带有心跳机制的 select。这种机制让我们可以在监听 channel 的同时，执行一些**周期性的任务**：
 
     func worker() {
-      heartbeat := time.NewTicker(30 * time.Second) // heartbeat 实例包含一个 channel 类型的字段 C，会按一定时间间隔持续产生事件，就像“心跳”一样
+      heartbeat := time.NewTicker(30 * time.Second) // heartbeat实例包含一个channel类型的字段C，会按一定时间间隔持续产生事件，就像“心跳”一样
       defer heartbeat.Stop()
       for {
         select {
         case <-c:
           // ... do some stuff
-        case <- heartbeat.C:  // channel c 无数据接收时，会每隔特定时间完成一次迭代，然后回到 for 循环进行下一次迭代
+        case <- heartbeat.C:  // channel c无数据接收时，会每隔特定时间完成一次迭代，然后回到for循环进行下一次迭代
           //... do heartbeat stuff
         }
       }
     }
 
-和 timer 一样，在使用完 ticker 之后，也不要忘记调用它的 Stop 方法，避免心跳事件在 ticker 的 channel（上面示例中的 heartbeat.C）中持续产生
+  和 timer 一样，在使用完 ticker 之后，也不要忘记调用它的 Stop 方法，避免心跳事件在 ticker 的 channel（上面示例中的 heartbeat.C）中持续产生
 
 ## 共享变量
 
