@@ -14,7 +14,7 @@ Goroutine 从Go 1.4 版本开始采用了连续栈的方案，也就是每个 Go
 
 这个方案的核心思想是对 Goroutine 的重用，也就是把 M 个计算任务调度到 N 个 Goroutine 上，而不是为每个计算任务分配一个独享的 Goroutine，从而提高计算资源的利用率
 
-### 线程池 workerpool 的实现思路
+## 线程池 workerpool 的实现思路
 
 workerpool 的实现主要分为三个部分：
 
@@ -22,7 +22,7 @@ workerpool 的实现主要分为三个部分：
 * pool 中 worker（Goroutine）的管理
 * task 的提交与调度
 
-原理：
+### 原理：
 
 pool 有一个 capacity 的属性，代表整个 pool 中 worker 的最大容量。使用一个带缓冲的 channel：active，作为 worker 的“计数器”，也就 channel **计数信号量**的使用模式
 
@@ -30,7 +30,7 @@ pool 有一个 capacity 的属性，代表整个 pool 中 worker 的最大容量
 
 把用户要提交给 workerpool 执行的请求抽象为一个 Task。Task 的提交与调度也很简单：Task 通过 Schedule 函数提交到一个 task channel 中，已经创建的 worker 将从这个 task channel 中读取 task 并执行
 
-一段 workpool 源码解析：
+### 一段 workpool 源码解析
 
     package workerpool
 
@@ -171,5 +171,217 @@ pool 有一个 capacity 的属性，代表整个 pool 中 worker 的最大容量
         }
 
         // 提交完任务后，调用 workerpool 的 Free 方法销毁 pool，pool 会等待所有 worker 执行完 task 后再退出(因为Schedule的阻塞所以产生了等待)
+        p.Free()
+    }
+
+### 添加功能选项机制
+
+功能选项机制，可以让某个包的用户可以根据自己的需求，通过设置不同功能选项来定制包的行为
+
+为 workerpool 添加两个功能选项：Schedule 调用是否阻塞，以及是否预创建所有的 worker
+
+option.go
+
+    package workerpool
+
+    type Option func(*Pool)
+
+    func WithBlock(block bool) Option {
+      return func(p *Pool) {
+        p.block = block
+      }
+    }
+
+    func WithPreAllocWorkers(preAlloc bool) Option {
+      return func(p *Pool) {
+        p.preAlloc = preAlloc
+      }
+    }
+
+pool.go
+
+    package workerpool
+
+    import (
+      "errors"
+      "fmt"
+      "sync"
+    )
+
+    var (
+      ErrNoIdleWorkerInPool = errors.New("no idle worker in pool") // workerpool中任务已满，没有空闲goroutine用于处理新任务
+      ErrWorkerPoolFreed    = errors.New("workerpool freed")       // workerpool已终止运行
+    )
+
+    type Pool struct {
+      capacity int  // workerpool大小
+      preAlloc bool // 是否在创建pool的时候，就预创建workers，默认值为：false
+
+      // 当pool满的情况下，新的Schedule调用是否阻塞当前goroutine。默认值：true
+      // 如果block = false，则Schedule返回ErrNoWorkerAvailInPool
+      block  bool
+      active chan struct{}
+
+      tasks chan Task
+
+      wg   sync.WaitGroup
+      quit chan struct{}
+    }
+
+    type Task func()
+
+    const (
+      defaultCapacity = 100
+      maxCapacity     = 10000
+    )
+
+    // opts用来传入可选参数的函数 WithBlock(false), WithPreAllocWorkers(true)
+    func New(capacity int, opts ...Option) *Pool {
+      if capacity <= 0 {
+        capacity = defaultCapacity
+      }
+      if capacity > maxCapacity {
+        capacity = maxCapacity
+      }
+
+      p := &Pool{
+        capacity: capacity,
+        block:    true,
+        tasks:    make(chan Task),
+        quit:     make(chan struct{}),
+        active:   make(chan struct{}, capacity),
+      }
+
+      for _, opt := range opts {
+        opt(p) // 通过WithBlock，WithPreAllocWorkers改变p.block和p.preAlloc的值
+      }
+
+      fmt.Printf("workerpool start(preAlloc=%t)\n", p.preAlloc)
+      
+      // 如果需要预创建workers则执行下面代码
+      if p.preAlloc {
+        // create all goroutines and send into works channel
+        for i := 0; i < p.capacity; i++ {
+          p.newWorker(i + 1)
+          p.active <- struct{}{}
+        }
+      }
+
+      go p.run()
+
+      return p
+    }
+
+    func (p *Pool) newWorker(i int) {
+      p.wg.Add(1)
+      go func() {
+        defer func() {
+          if err := recover(); err != nil {
+            fmt.Printf("worker[%03d]: recover panic[%s] and exit\n", i, err)
+            <-p.active
+          }
+          p.wg.Done()
+        }()
+
+        fmt.Printf("worker[%03d]: start\n", i)
+
+        for {
+          select {
+          case <-p.quit:
+            fmt.Printf("worker[%03d]: exit\n", i)
+            <-p.active
+            return
+          case t := <-p.tasks:
+            fmt.Printf("worker[%03d]: receive a task\n", i)
+            t()
+          }
+        }
+      }()
+    }
+
+    func (p *Pool) returnTask(t Task) {
+      go func() {
+        p.tasks <- t
+      }()
+    }
+
+    func (p *Pool) run() {
+      idx := len(p.active)
+
+      if !p.preAlloc {
+      loop:
+        for t := range p.tasks { // 如果是按需分配就需要从tasks中取任务，根据任务数量生成相应数量的worker
+          p.returnTask(t) // 这里是调度循环，暂时不处理task，所以要把task扔回tasks channel，等worker启动后再处理
+          select {
+          case <-p.quit:
+            return
+          case p.active <- struct{}{}:
+            idx++
+            p.newWorker(idx)
+          default:
+            break loop
+          }
+        }
+      }
+
+      for {
+        select {
+        case <-p.quit:
+          return
+        case p.active <- struct{}{}: // 为什么上面已经全部分配完了，这里又要抢占信号量，别忘了woker意外退出后还是需要重新填充的
+          // create a new worker
+          idx++
+          p.newWorker(idx)
+        }
+      }
+    }
+
+    func (p *Pool) Schedule(t Task) error {
+      select {
+      case <-p.quit:
+        return ErrWorkerPoolFreed
+      case p.tasks <- t:
+        return nil
+      default:
+        // Schedule 在 tasks chanel 无法写入的情况下，进入 default 分支。在 default 分支中，Schedule 根据 block 字段的值，决定究竟是继续阻塞在 tasks channel 上，还是返回 ErrNoIdleWorkerInPool 错误
+        if p.block {
+          p.tasks <- t
+          return nil
+        }
+        return ErrNoIdleWorkerInPool
+      }
+    }
+
+    func (p *Pool) Free() {
+      close(p.quit) // make sure all worker and p.run exit and schedule return error
+      p.wg.Wait()
+      fmt.Printf("workerpool freed(preAlloc=%t)\n", p.preAlloc)
+    }
+
+调用示例：
+
+    package main
+      
+    import (
+        "fmt"
+        "time"
+
+        "github.com/bigwhite/workerpool"
+    )
+
+    func main() {
+        p := workerpool.New(5, workerpool.WithPreAllocWorkers(false), workerpool.WithBlock(false))
+
+        // 在创建 workerpool 与真正开始调用 Schedule 方法之间，做了一个 Sleep，尽量减少 Schedule 都返回失败的频率（但这仍然无法保证这种情况不会发生）
+        time.Sleep(time.Second * 2)
+        for i := 0; i < 10; i++ {
+            err := p.Schedule(func() {
+                time.Sleep(time.Second * 3)
+            })
+            if err != nil {
+                fmt.Printf("task[%d]: error: %s\n", i, err.Error())
+            }
+        }
+
         p.Free()
     }
