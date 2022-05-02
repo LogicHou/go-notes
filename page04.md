@@ -674,3 +674,146 @@ iota 是 Go 语言的一个预定义标识符，表示的是 const 声明块（�
 虽然 iota 带来了灵活性与便利，但也有一些场合不适于使用 iota
 
 比如标准库 syscall ，因为系统调用的编号以及错误码值几乎形成了标准，直接用原值更好，也方便查找，如果使用iota会看得头晕，心智负担太大
+
+# 指针类型
+
+指针类型是依托某一个**基类型**而存在的，比如：一个整型为 int，那么它对应的整型指针就是 *int，没有 int 类型，就不会有 *int 类型
+
+**如果拥有一个类型 T，那么以 T 作为基类型的指针类型为 *T**
+
+    var p *T
+
+**unsafe.Pointer** 类似于 C 语言中的 void*，不需要基类型，用于表示一个通用指针类型，**也就是任何指针类型都可以显式转换为一个 unsafe.Pointer，而 unsafe.Pointer 也可以显式转换为任意指针类型**：
+
+    var p *T
+    var p1 = unsafe.Pointer(p) // 任意指针类型显式转换为unsafe.Pointer
+    p = (*T)(p1)               // unsafe.Pointer也可以显式转换为任意指针类型
+
+如果指针类型变量没有被显式赋予初值，那么它的值为 **nil**：
+
+    var p *T
+    println(p == nil) // true
+
+给一个指针类型变量赋值：
+
+    var a int = 13
+    var p *int = &a  // 给整型指针变量p赋初值
+
+变量 a 前面的&符号称为**取地址符号**，只能使用基类型变量的地址给对应的指针类型变量赋值，如果类型不匹配，Go 编译器是会报错：
+
+    var b byte = 10
+    var p *int = &b // Go编译器报错：cannot use &b (value of type *byte) as type *int in variable declaration 
+
+**对于非指针类型变量，Go 在对应的内存单元中放置的就是该变量的值**
+
+**指针变量分配的内存单元中存储的是被引用变量对应的内存单元的地址**
+
+指针类型变量的大小与其基类型大小无关，而是和系统地址的表示长度有关，可以通过 unsafe.Sizeof() 函数获取：
+
+    var p1 *int
+    println(unsafe.Sizeof(p1)) // 8
+
+unsafe.Sizeof() 函数原型如下：
+
+    func Sizeof(x ArbitraryType) uintptr
+
+这个函数的返回值类型是 uintptr，**uintptr 是一个整数类型，它的大小足以容纳任何指针的比特模式（bit pattern），在 Go 语言中 uintptr 类型的大小就代表了指针类型的大小**
+
+通过指针读取或修改其指向的内存单元所代表的基类型变量：
+
+    var a int = 17
+    var p *int = &a
+    println(*p) // 17 
+    (*p) += 3
+    println(a)  // 20
+
+通过在指针类型变量的前面加上一个**星号**，读取或修改其指向的内存地址上的变量值，这种操作被称为指针的**解引用（dereference）**
+
+通过**解引用**输出或修改的，并不是指针变量本身的值，而是指针指向的内存单元的值
+
+可以使用 Printf 通过 %p 输出指针自身的值：
+
+    fmt.Printf("%p\n", p) // 0xc0000160d8
+
+指针变量重新赋值，可以变换其指向的内存单元：
+
+    var a int = 5
+    var b int = 6
+
+    var p *int = &a  // 指向变量a所在内存单元
+    println(*p)      // 输出变量a的值
+    p = &b           // 指向变量b所在内存单元
+    println(*p)      // 输出变量b的值
+
+多个指针变量指向同一个变量的内存单元，通过其中一个指针变量对内存单元的修改，可以通过另外一个指针变量的解引用反映出来：
+
+    var a int = 5
+    var p1 *int = &a // p1指向变量a所在内存单元
+    var p2 *int = &a // p2指向变量b所在内存单元
+    (*p1) += 5       // 通过p1修改变量a的值
+    println(*p2)     // 10 对变量a的修改可以通过另外一个指针变量p2的解引用反映出来
+
+## 二级指针
+
+    package main
+
+    func main() {
+        var a int = 5
+        var p1 *int = &a
+        println(*p1) // 5
+        var b int = 55
+        var p2 *int = &b
+        println(*p2) // 55
+
+        var pp **int = &p1 // 二级指针
+        println(**pp) // 5
+        pp = &p2      
+        println(**pp) // 55
+    }
+
+二级指针也就是指向指针的指针
+
+对一级指针解引用，得到的其实是指针指向的变量，而对二级指针 pp 解引用一次，我们得到将是 pp 指向的指针变量
+
+    println((*pp) == p1) // true
+
+解引用两次，其实就相当于对一级指针解引用一次，得到的是 pp 指向的指针变量所指向的整型变量：
+
+    println((**pp) == (*p1)) // true
+    println((**pp) == a)     // true
+
+一级指针常被用来改变普通变量的值，**二级指针可以用来改变指针变量的值，也就是指针变量的指向**
+
+## Go 中的指针用途与使用限制
+
+### 限制一：限制了显式指针类型转换
+
+    var a int = 0x12345678
+    var pa *int = &a
+    var pb *byte = (*byte)(pa) // 编译器报错：cannot convert pa (variable of type *int) to type *byte
+    fmt.Printf("%x\n", *pb)
+
+通过 unsafe 的方式转换：
+
+    var a int = 0x12345678                                                            
+    var pa *int = &a                                                                  
+    var pb *byte = (*byte)(unsafe.Pointer(pa)) // ok
+    fmt.Printf("%x\n", *pb) // 78   
+
+### 限制二：不支持指针运算
+
+    var arr = [5]int{1, 2, 3, 4, 5}
+    var p *int = &arr[0]
+    println(*p)
+    p = p + 1  // 编译器报错：cannot convert 1 (untyped int constant) to *int
+    println(*p)
+
+通过 unsafe 的方式计算：
+
+    var arr = [5]int{11, 12, 13, 14, 15}
+    var p *int = &arr[0]
+    var i uintptr
+    for i = 0; i < uintptr(len(arr)); i++ {
+        p1 := (*int)(unsafe.Pointer(uintptr(unsafe.Pointer(p)) + i*unsafe.Sizeof(*p)))
+        println(*p1)
+    }           
