@@ -13,3 +13,15 @@ https://github.com/pkg/errors
 ## toml 解析
 
 https://github.com/pelletier/go-toml/tree/v2
+
+## 类型转换
+
+https://github.com/spf13/cast
+
+## lodash
+
+https://github.com/samber/lo
+
+## 数据结构增强
+
+https://github.com/shopspring/decimal
