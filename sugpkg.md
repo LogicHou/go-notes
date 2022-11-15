@@ -25,3 +25,7 @@ https://github.com/samber/lo
 ## 数据结构增强
 
 https://github.com/shopspring/decimal
+
+## 加解密
+
+https://github.com/Lyafei/go-rsa https://blog.csdn.net/airyearth/article/details/113755142
